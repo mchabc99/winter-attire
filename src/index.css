@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --color-wa-navy: #0F2537;
+  --color-wa-ice-teal: #0E7490;
+  --color-wa-ice-bg: #F8FAFC;
+  --color-wa-cyan-50: #F2FAFB;
+  --color-wa-cyan-100: #E0F4F6;
+  --color-wa-cyan-200: #C2EAEF;
+  --color-wa-cyan-300: #9DDCE3;
+  --color-wa-cyan-400: #68C4CE;
+  --color-wa-cyan-500: #42ABB7;
+  --color-wa-cyan-600: #338B96;
+  --color-wa-cyan-700: #2B707A;
+  --color-wa-cyan-800: #275C64;
+  --color-wa-cyan-900: #1B3F45;
+  --color-wa-cyan-950: #0D262B;
+}
+
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Premium Clean Winter Ambient Canvas (#F8FAFC soft ice white) */
+body {
+  background-color: #F8FAFC;
+  background-image: 
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(226, 232, 240, 0.4) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 85% 15%, rgba(224, 242, 254, 0.4) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 45% at 15% 30%, rgba(204, 251, 241, 0.25) 0%, transparent 60%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  color: #0F2537;
+  font-family: var(--font-sans);
+}
+
+/* Clean Winter Cards with Delicate #E2E8F0 Border */
+.glass-frost-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 1rem;
+  box-shadow: 0 4px 20px -2px rgba(15, 37, 55, 0.04);
+}
+
+.glass-frost-subtle {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+}
+
+/* Aurora Pastel Badges */
+.wa-badge-aurora {
+  background: linear-gradient(135deg, rgba(224, 242, 254, 0.9) 0%, rgba(204, 251, 241, 0.9) 50%, rgba(209, 250, 229, 0.9) 100%);
+  color: #0d4b53;
+  border: 1px solid rgba(153, 246, 228, 0.85);
+  box-shadow: 0 2px 8px -2px rgba(45, 212, 191, 0.15);
+}
+
+.wa-badge-cyan {
+  background: #C2EAEF;
+  color: #164E56;
+  border: 1px solid #9DDCE3;
+}
+
+.wa-badge-rose {
+  background: #E8D4E2;
+  color: #582A4D;
+  border: 1px solid #D7BACD;
+}
+
+/* Aurora Shimmering Heading */
+.aurora-gradient-text {
+  background: linear-gradient(135deg, #0284c7 0%, #0d9488 45%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Aurora Subtle Floating Wave Motion */
+@keyframes auroraPulse {
+  0%, 100% {
+    transform: scale(1) translateY(0);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.08) translateY(-10px);
+    opacity: 0.65;
+  }
+}
+
+.animate-aurora-slow {
+  animation: auroraPulse 14s ease-in-out infinite;
+}
+
+/* Snowflake floating subtle animation */
+@keyframes snowDrift {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0.8; }
+  50% { transform: translateY(6px) rotate(180deg); opacity: 1; }
+  100% { transform: translateY(0) rotate(360deg); opacity: 0.8; }
+}
+
+.animate-snow-drift {
+  animation: snowDrift 8s ease-in-out infinite;
+}
