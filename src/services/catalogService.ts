@@ -86,17 +86,23 @@ export function extractGoogleDriveFolderId(rawUrl: string): string | null {
  * - https://lh3.googleusercontent.com/d/{FILE_ID}
  * - Raw 25-50 alphanumeric file IDs
  */
+/**
+ * Ekstraksi ID Google Drive menggunakan regex /[-\w]{25,}/
+ * Mengambil ID file unik dari URL Google Drive (/d/ID, id=ID, lh3.../d/ID, folder ID, atau raw ID).
+ */
 export function extractGoogleDriveFileId(rawUrl: string): string | null {
   if (!rawUrl) return null;
   const clean = String(rawUrl).trim();
 
-  // If it's a folder, do not treat folder ID as an image file ID
-  if (isGoogleDriveFolder(clean)) {
+  // Exclude spreadsheet URL or unsplash URL
+  if (clean.includes('spreadsheets') || clean.includes('images.unsplash.com')) {
     return null;
   }
 
-  // 1. Google Drive specific patterns (/d/ID, id=ID, lh3.../d/ID)
-  const driveSpecificMatch = clean.match(/(?:drive\.google\.com\/(?:file\/(?:u\/\d+\/)?d\/|open\?id=|uc\?(?:export=view&)?id=)|lh3\.googleusercontent\.com\/(?:u\/\d+\/)?d\/)([-\w]{25,})/i);
+  // 1. Google Drive specific patterns (/d/ID, id=ID, lh3.../d/ID, folders/ID)
+  const driveSpecificMatch = clean.match(
+    /(?:drive\.google\.com\/(?:file\/(?:u\/\d+\/)?d\/|open\?id=|uc\?(?:export=view&)?id=|drive\/(?:u\/\d+\/)?folders\/)|lh3\.googleusercontent\.com\/(?:u\/\d+\/)?d\/)([-\w]{25,})/i
+  );
   if (driveSpecificMatch && driveSpecificMatch[1]) {
     return driveSpecificMatch[1];
   }
@@ -107,12 +113,10 @@ export function extractGoogleDriveFileId(rawUrl: string): string | null {
     return idQueryMatch[1];
   }
 
-  // 3. Fallback: match any base64 / alphanumeric ID with regex /[-\w]{25,}/
-  if (!clean.includes('spreadsheets') && !clean.includes('unsplash.com')) {
-    const rawMatch = clean.match(/[-\w]{25,}/);
-    if (rawMatch) {
-      return rawMatch[0];
-    }
+  // 3. Fallback: match any ID dengan regex /[-\w]{25,}/
+  const rawMatch = clean.match(/[-\w]{25,}/);
+  if (rawMatch) {
+    return rawMatch[0];
   }
 
   return null;
@@ -182,7 +186,7 @@ export interface GoogleDriveImageResolution {
  * - Siapkan fallback kedua jika link bukan Google Drive: gunakan URL aslinya langsung.
  */
 export function resolveCatalogImageUrl(rawUrl: string | null | undefined): GoogleDriveImageResolution {
-  if (!rawUrl || typeof rawUrl !== 'string') {
+  if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) {
     return {
       primaryUrl: DEFAULT_PRODUCT_FALLBACK_IMAGE,
       thumbnailUrl: DEFAULT_PRODUCT_FALLBACK_IMAGE,
@@ -205,9 +209,10 @@ export function resolveCatalogImageUrl(rawUrl: string | null | undefined): Googl
     };
   }
 
+  // JANGAN TAMPILKAN GAMBAR FALLBACK / PLACEHOLDER default jika kolom tersebut memiliki link!
   return {
-    primaryUrl: clean || DEFAULT_PRODUCT_FALLBACK_IMAGE,
-    thumbnailUrl: clean || DEFAULT_PRODUCT_FALLBACK_IMAGE,
+    primaryUrl: clean,
+    thumbnailUrl: clean,
     originalUrl: clean,
     isDrive: false,
     driveId: null
@@ -640,16 +645,37 @@ export function parseCatalogCsv(csvText: string): DynamicCatalogProduct[] {
     const row = rows[r];
     if (!row || row.length === 0) continue;
 
-    const getValue = (idx: number): string => (idx !== -1 && idx < row.length ? row[idx].trim() : '');
+    const getPosOrHeader = (headerIdx: number, positionalIdx: number, fallback = ''): string => {
+      if (headerIdx !== -1 && headerIdx < row.length && row[headerIdx].trim()) {
+        return row[headerIdx].trim();
+      }
+      if (positionalIdx < row.length && row[positionalIdx].trim()) {
+        return row[positionalIdx].trim();
+      }
+      return fallback;
+    };
 
-    const kode_produk = getValue(idxMap.kode_produk);
-    const nama_produk = getValue(idxMap.nama_produk);
+    const kode_produk = getPosOrHeader(idxMap.kode_produk, 0, `ITEM-${r}`);
+    const nama_produk = getPosOrHeader(idxMap.nama_produk, 1, `Winter Attire Gear ${kode_produk}`);
 
-    // Skip empty lines without code or name
+    // Skip empty lines without any content
     if (!kode_produk && !nama_produk) continue;
 
-    const rawFotoProduk = getValue(idxMap.link_foto_produk);
-    const rawFotoSpek = getValue(idxMap.link_foto_spek);
+    // 1. BACA KOLOM FOTO BERDASARKAN URUTAN (FAILSAFE):
+    // Dalam baris CSV katalog (22 kolom):
+    // - Kolom ke-21 (indeks 20) PASTI adalah 'link_foto_produk'.
+    // - Kolom ke-22 (indeks 21) PASTI adalah 'link_foto_spek'.
+    // Ambil nilai string dari kolom tersebut langsung tanpa mempedulikan kecocokan nama header.
+    let rawFotoProduk = (row.length > 20 && row[20] !== undefined) ? String(row[20]).trim() : '';
+    let rawFotoSpek = (row.length > 21 && row[21] !== undefined) ? String(row[21]).trim() : '';
+
+    // Secondary fallback: jika kolom indeks 20/21 kosong, cek kecocokan nama header
+    if (!rawFotoProduk && idxMap.link_foto_produk !== -1 && idxMap.link_foto_produk < row.length) {
+      rawFotoProduk = String(row[idxMap.link_foto_produk] || '').trim();
+    }
+    if (!rawFotoSpek && idxMap.link_foto_spek !== -1 && idxMap.link_foto_spek < row.length) {
+      rawFotoSpek = String(row[idxMap.link_foto_spek] || '').trim();
+    }
 
     let cleanFotoProduk = sanitizeMediaUrl(rawFotoProduk);
     let cleanFotoSpek = sanitizeMediaUrl(rawFotoSpek);
@@ -663,34 +689,58 @@ export function parseCatalogCsv(csvText: string): DynamicCatalogProduct[] {
       }
     }
 
-    const resolvedProduk = resolveCatalogImageUrl(cleanFotoProduk);
-    const resolvedSpek = resolveCatalogImageUrl(cleanFotoSpek);
+    // 2. EKSTRAKSI ID GOOGLE DRIVE & CDN:
+    // Untuk setiap link di kolom foto tersebut:
+    // - Ambil ID file uniknya menggunakan regex: /[-\w]{25,}/
+    // - Jika ID ditemukan, ubah URL sumber gambar menjadi: https://lh3.googleusercontent.com/d/[ID]=s800
+    // - JANGAN TAMPILKAN GAMBAR FALLBACK / PLACEHOLDER default jika kolom tersebut memiliki link!
+    const idProduk = extractGoogleDriveFileId(cleanFotoProduk || rawFotoProduk);
+    const idSpek = extractGoogleDriveFileId(cleanFotoSpek || rawFotoSpek);
 
-    const link_foto_produk = resolvedProduk.primaryUrl || resolvedSpek.primaryUrl;
-    const link_foto_spek = resolvedSpek.primaryUrl || link_foto_produk;
+    let link_foto_produk = '';
+    if (idProduk) {
+      link_foto_produk = `https://lh3.googleusercontent.com/d/${idProduk}=s800`;
+    } else if (cleanFotoProduk) {
+      link_foto_produk = cleanFotoProduk;
+    }
 
-    const harga_3 = parseNumber(getValue(idxMap.harga_sewa_3_hari), 0);
-    const harga_6 = parseNumber(getValue(idxMap.harga_sewa_6_hari), harga_3 ? Math.round(harga_3 * 1.5) : 0);
-    const harga_9 = parseNumber(getValue(idxMap.harga_sewa_9_hari), harga_3 ? Math.round(harga_3 * 2.0) : 0);
-    const harga_12 = parseNumber(getValue(idxMap.harga_sewa_12_hari), harga_3 ? Math.round(harga_3 * 2.5) : 0);
-    const harga_15 = parseNumber(getValue(idxMap.harga_sewa_15_hari), harga_3 ? Math.round(harga_3 * 3.0) : 0);
-    const harga_18 = parseNumber(getValue(idxMap.harga_sewa_18_hari), harga_3 ? Math.round(harga_3 * 3.5) : 0);
-    const harga_21 = parseNumber(getValue(idxMap.harga_sewa_21_hari), harga_3 ? Math.round(harga_3 * 4.0) : 0);
-    const harga_24 = parseNumber(getValue(idxMap.harga_sewa_24_hari), harga_3 ? Math.round(harga_3 * 4.5) : 0);
+    let link_foto_spek = '';
+    if (idSpek) {
+      link_foto_spek = `https://lh3.googleusercontent.com/d/${idSpek}=s800`;
+    } else if (cleanFotoSpek) {
+      link_foto_spek = cleanFotoSpek;
+    }
+
+    // Cross-fallback jika salah satu kosong
+    if (!link_foto_produk && link_foto_spek) {
+      link_foto_produk = link_foto_spek;
+    }
+    if (!link_foto_spek && link_foto_produk) {
+      link_foto_spek = link_foto_produk;
+    }
+
+    const harga_3 = parseNumber(getPosOrHeader(idxMap.harga_sewa_3_hari, 11), 0);
+    const harga_6 = parseNumber(getPosOrHeader(idxMap.harga_sewa_6_hari, 12), harga_3 ? Math.round(harga_3 * 1.5) : 0);
+    const harga_9 = parseNumber(getPosOrHeader(idxMap.harga_sewa_9_hari, 13), harga_3 ? Math.round(harga_3 * 2.0) : 0);
+    const harga_12 = parseNumber(getPosOrHeader(idxMap.harga_sewa_12_hari, 14), harga_3 ? Math.round(harga_3 * 2.5) : 0);
+    const harga_15 = parseNumber(getPosOrHeader(idxMap.harga_sewa_15_hari, 15), harga_3 ? Math.round(harga_3 * 3.0) : 0);
+    const harga_18 = parseNumber(getPosOrHeader(idxMap.harga_sewa_18_hari, 16), harga_3 ? Math.round(harga_3 * 3.5) : 0);
+    const harga_21 = parseNumber(getPosOrHeader(idxMap.harga_sewa_21_hari, 17), harga_3 ? Math.round(harga_3 * 4.0) : 0);
+    const harga_24 = parseNumber(getPosOrHeader(idxMap.harga_sewa_24_hari, 18), harga_3 ? Math.round(harga_3 * 4.5) : 0);
 
     const product: DynamicCatalogProduct = {
       id: `${kode_produk || 'ITEM'}_${r}`,
       kode_produk: kode_produk || `ITEM-${r}`,
       nama_produk: nama_produk || `Winter Attire Gear ${kode_produk}`,
-      kategori: getValue(idxMap.kategori) || 'Regular',
-      warna: getValue(idxMap.warna) || 'Black',
-      size_wa: getValue(idxMap.size_wa) || 'All Size',
-      rekomendasi_suhu: getValue(idxMap.rekomendasi_suhu) || '5°C s/d -15°C',
-      berat_gram: parseNumber(getValue(idxMap.berat_gram), 800),
-      panjang_cm: parseNumber(getValue(idxMap.panjang_cm), 75),
-      lingkar_dada_max_cm: parseNumber(getValue(idxMap.lingkar_dada_max_cm), 110),
-      lingkar_pinggang_max_cm: parseNumber(getValue(idxMap.lingkar_pinggang_max_cm), 105),
-      fitur_spesial: getValue(idxMap.fitur_spesial) || 'Windproof, Water-repellent, Thermal Insulation',
+      kategori: getPosOrHeader(idxMap.kategori, 2, 'Regular'),
+      warna: getPosOrHeader(idxMap.warna, 3, 'Black'),
+      size_wa: getPosOrHeader(idxMap.size_wa, 4, 'All Size'),
+      rekomendasi_suhu: getPosOrHeader(idxMap.rekomendasi_suhu, 5, '5°C s/d -15°C'),
+      berat_gram: parseNumber(getPosOrHeader(idxMap.berat_gram, 6), 800),
+      panjang_cm: parseNumber(getPosOrHeader(idxMap.panjang_cm, 7), 75),
+      lingkar_dada_max_cm: parseNumber(getPosOrHeader(idxMap.lingkar_dada_max_cm, 8), 110),
+      lingkar_pinggang_max_cm: parseNumber(getPosOrHeader(idxMap.lingkar_pinggang_max_cm, 9), 105),
+      fitur_spesial: getPosOrHeader(idxMap.fitur_spesial, 10, 'Windproof, Water-repellent, Thermal Insulation'),
       harga_sewa_3_hari: harga_3 || 280000,
       harga_sewa_6_hari: harga_6 || 420000,
       harga_sewa_9_hari: harga_9 || 560000,
@@ -699,7 +749,7 @@ export function parseCatalogCsv(csvText: string): DynamicCatalogProduct[] {
       harga_sewa_18_hari: harga_18 || 980000,
       harga_sewa_21_hari: harga_21 || 1120000,
       harga_sewa_24_hari: harga_24 || 1260000,
-      biaya_deposit: parseNumber(getValue(idxMap.biaya_deposit), 500000),
+      biaya_deposit: parseNumber(getPosOrHeader(idxMap.biaya_deposit, 19), 500000),
       link_foto_produk,
       link_foto_spek
     };

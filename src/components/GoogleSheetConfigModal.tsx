@@ -901,8 +901,8 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
                                       (p) =>
                                         extractGoogleDriveFileId(p.link_foto_produk || '') ||
                                         extractGoogleDriveFileId(p.link_foto_spek || '') ||
-                                        isGoogleDriveFolder(p.link_foto_produk || '') ||
-                                        isGoogleDriveFolder(p.link_foto_spek || '')
+                                        (p.link_foto_produk && (p.link_foto_produk.includes('googleusercontent.com') || p.link_foto_produk.includes('drive.google'))) ||
+                                        (p.link_foto_spek && (p.link_foto_spek.includes('googleusercontent.com') || p.link_foto_spek.includes('drive.google')))
                                     ).length
                                   } Item
                                 </span>
