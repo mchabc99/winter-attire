@@ -28,7 +28,9 @@ import {
   convertGoogleDriveImageUrl,
   calculateTieredRentalPrice,
   calculateRentalDays,
-  getCatalogSheetUrl
+  getCatalogSheetUrl,
+  DEFAULT_CSV_URL,
+  CATALOG_CACHE_STORAGE_KEY
 } from './services/catalogService';
 import { loadBookings, checkProductAvailability } from './services/availabilityService';
 import { Header } from './components/Header';
@@ -56,24 +58,46 @@ import {
   ShoppingBag,
   ArrowRight,
   FileText,
-  Lock
+  Lock,
+  RefreshCw
 } from 'lucide-react';
 
 export default function App() {
   // Navigation / Page state
   const [activePage, setActivePage] = useState<ActivePage>('advisor');
 
-  // Listen for admin shortcut (Ctrl + Shift + S or Cmd + Shift + S)
+  // Secret URL Admin Mode Detection (?byungimuncil=true)
+  const [isByungimuncilAdmin, setIsByungimuncilAdmin] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        const val = sp.get('byungimuncil');
+        if (val === 'true' || val === '1') {
+          sessionStorage.setItem('winter_attire_byungimuncil_active', 'true');
+          sessionStorage.setItem('winter_attire_admin_authed', 'true');
+          return true;
+        }
+        return sessionStorage.getItem('winter_attire_byungimuncil_active') === 'true';
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+
+  // Listen for admin shortcut (Ctrl + Shift + S or Cmd + Shift + S) - Only active if secret mode is unlocked
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'S' || e.key === 's')) {
-        e.preventDefault();
-        setIsGoogleSheetModalOpen(true);
+        if (isByungimuncilAdmin) {
+          e.preventDefault();
+          setIsGoogleSheetModalOpen(true);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isByungimuncilAdmin]);
 
   // Form State - Synchronized initial dates and month (Desember = month 12)
   const [formData, setFormData] = useState<UserFormData>({
@@ -96,7 +120,10 @@ export default function App() {
   // Admin Mode Authentication State (Restricts spreadsheet sync & refresh)
   const [isAdminAuthed, setIsAdminAuthed] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('winter_attire_admin_authed') === 'true';
+      return (
+        sessionStorage.getItem('winter_attire_byungimuncil_active') === 'true' ||
+        sessionStorage.getItem('winter_attire_admin_authed') === 'true'
+      );
     }
     return false;
   });
@@ -104,13 +131,7 @@ export default function App() {
 
   const currentSheetUrl = getCatalogSheetUrl();
   const handleOpenAdminStok = (section: 'catalog' | 'bookings' = 'catalog') => {
-    // If no sheet has been connected yet on this domain, auto-authenticate so admin can easily paste their sheet
-    if (catalogSource === 'fallback' && !currentSheetUrl) {
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('winter_attire_admin_authed', 'true');
-      }
-      setIsAdminAuthed(true);
-    }
+    if (!isByungimuncilAdmin) return;
     setAdminModalSection(section);
     setIsGoogleSheetModalOpen(true);
   };
@@ -122,11 +143,42 @@ export default function App() {
     setIsAdminAuthed(false);
   };
 
+  const handleExitAdmin = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('winter_attire_byungimuncil_active');
+      sessionStorage.removeItem('winter_attire_admin_authed');
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('byungimuncil');
+        window.history.replaceState({}, '', url.pathname + (url.search || ''));
+      } catch {
+        // ignore
+      }
+    }
+    setIsByungimuncilAdmin(false);
+    setIsAdminAuthed(false);
+    setIsGoogleSheetModalOpen(false);
+  };
+
   // Dynamic 22-Column Catalog from Google Sheets (100% Dynamic & Synchronized)
-  const [catalogProducts, setCatalogProducts] = useState<DynamicCatalogProduct[]>(() =>
-    getFallbackDynamicCatalog()
-  );
-  const [isLoadingCatalog, setIsLoadingCatalog] = useState<boolean>(false);
+  // Seed with cached data from localStorage if available, or fallback catalog for instant first-load
+  const [catalogProducts, setCatalogProducts] = useState<DynamicCatalogProduct[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem(CATALOG_CACHE_STORAGE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch {
+        // fallback
+      }
+    }
+    return getFallbackDynamicCatalog();
+  });
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState<boolean>(true);
   const [catalogSource, setCatalogSource] = useState<'google_sheets' | 'fallback'>('fallback');
   const [lastCatalogSync, setLastCatalogSync] = useState<Date | null>(null);
   const [cacheBusterKey, setCacheBusterKey] = useState<number>(Date.now());
@@ -137,9 +189,11 @@ export default function App() {
     setCacheBusterKey(Date.now());
     try {
       const result = await fetchCatalogFromGoogleSheet();
-      setCatalogProducts(result.products);
-      setCatalogSource(result.source);
-      setLastCatalogSync(new Date());
+      if (result.products && result.products.length > 0) {
+        setCatalogProducts(result.products);
+        setCatalogSource(result.source);
+        setLastCatalogSync(new Date());
+      }
     } catch (err) {
       console.warn('Could not refresh dynamic catalog:', err);
     } finally {
@@ -739,6 +793,53 @@ export default function App() {
         <div className="absolute bottom-16 left-12 w-[420px] h-[420px] bg-gradient-to-tr from-emerald-100/30 via-teal-100/25 to-sky-200/30 rounded-full blur-3xl" />
       </div>
 
+      {/* Secret Admin Banner (Only visible if ?byungimuncil=true) */}
+      {isByungimuncilAdmin && (
+        <div className="bg-gradient-to-r from-teal-950 via-[#0C3B43] to-slate-950 text-white px-3 sm:px-6 py-2.5 text-xs border-b border-teal-500/40 shadow-md sticky top-0 z-50">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-extrabold text-teal-200">
+                Mode Admin Rahasia Aktif (?byungimuncil=true)
+              </span>
+              <span className="text-[11px] text-teal-300/80 hidden md:inline">
+                • {catalogProducts.length} Produk • {catalogSource === 'google_sheets' ? 'Sheets Terkoneksi' : 'Katalog Master'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={refreshCatalog}
+                disabled={isLoadingCatalog}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Sync / Refresh Data Katalog langsung dari Google Sheets"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingCatalog ? 'animate-spin' : ''}`} />
+                <span>{isLoadingCatalog ? 'Sinkronisasi...' : 'Sync / Refresh Data'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenAdminStok('catalog')}
+                className="px-2.5 py-1 rounded-lg bg-teal-800/90 hover:bg-teal-700 text-white font-bold text-[11px] transition flex items-center gap-1.5 cursor-pointer border border-teal-600/50"
+                title="Buka Pengaturan Spreadsheet CSV"
+              >
+                <FileText className="w-3 h-3 text-teal-300" />
+                <span>Pengaturan CSV</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExitAdmin}
+                className="px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-600 text-rose-200 hover:text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                title="Keluar dari Mode Admin dan kembali ke tampilan publik"
+              >
+                <Lock className="w-3 h-3" />
+                <span>Kunci / Keluar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header with Multi-Page Navigation */}
       <Header
         activePage={activePage}
@@ -746,7 +847,7 @@ export default function App() {
         cartCount={cartItems.length}
         onOpenLayeringGuide={() => setIsLayeringGuideOpen(true)}
         onOpenFaq={() => setIsFaqOpen(true)}
-        onOpenSheetConfig={() => handleOpenAdminStok('catalog')}
+        onOpenSheetConfig={isByungimuncilAdmin ? () => handleOpenAdminStok('catalog') : undefined}
         onOpenTermsModal={handleOpenTermsModal}
       />
 
@@ -795,7 +896,7 @@ export default function App() {
                     }
                   }}
                   isAnalyzed={true}
-                  onOpenSheetConfig={() => handleOpenAdminStok('bookings')}
+                  onOpenSheetConfig={isByungimuncilAdmin ? () => handleOpenAdminStok('bookings') : undefined}
                   sheetSource={sheetSource}
                   bookingsCount={bookings.length}
                 />
@@ -876,9 +977,9 @@ export default function App() {
               startDate={formData.startDate}
               endDate={formData.endDate}
               bookings={bookings}
-              isAdminAuthed={isAdminAuthed}
-              onOpenAdminStok={() => handleOpenAdminStok('catalog')}
-              onLogoutAdmin={handleLogoutAdmin}
+              isAdminAuthed={isByungimuncilAdmin}
+              onOpenAdminStok={isByungimuncilAdmin ? () => handleOpenAdminStok('catalog') : undefined}
+              onLogoutAdmin={isByungimuncilAdmin ? handleExitAdmin : undefined}
               cacheKey={cacheBusterKey}
             />
           </div>
@@ -964,16 +1065,20 @@ export default function App() {
                 <FileText className="w-3 h-3 text-teal-700" />
                 <span>Cara Sewa & Syarat Ketentuan (T&C)</span>
               </button>
-              <span className="text-slate-300">•</span>
-              <button
-                type="button"
-                onClick={() => handleOpenAdminStok('catalog')}
-                className="text-slate-400 hover:text-teal-900 transition flex items-center gap-1 cursor-pointer font-medium"
-                title="Kelola Data Stok & Katalog Google Sheets (Memerlukan PIN) • Shortcut: Ctrl+Shift+S"
-              >
-                <Lock className="w-2.5 h-2.5 text-slate-400" />
-                <span>Admin Stok</span>
-              </button>
+              {isByungimuncilAdmin && (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAdminStok('catalog')}
+                    className="text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md transition flex items-center gap-1 cursor-pointer font-bold text-[10px]"
+                    title="Portal Admin Aktif (?byungimuncil=true)"
+                  >
+                    <Lock className="w-2.5 h-2.5 text-amber-700" />
+                    <span>Admin Portal</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -991,29 +1096,31 @@ export default function App() {
         onClose={() => setIsTermsModalOpen(false)}
         initialTab={termsModalTab}
       />
-      <GoogleSheetConfigModal
-        isOpen={isGoogleSheetModalOpen}
-        onClose={() => setIsGoogleSheetModalOpen(false)}
-        bookings={bookings}
-        sheetSource={sheetSource}
-        onUpdateBookings={(updatedBookings, source) => {
-          setBookings(updatedBookings);
-          setSheetSource(source);
-          refreshCatalog();
-        }}
-        catalogProducts={catalogProducts}
-        catalogSource={catalogSource}
-        lastCatalogSync={lastCatalogSync}
-        onRefreshCatalog={refreshCatalog}
-        onUpdateCatalog={(newProds, source) => {
-          setCatalogProducts(newProds);
-          setCatalogSource(source);
-          setLastCatalogSync(new Date());
-        }}
-        isAdminAuthed={isAdminAuthed}
-        onAdminAuthChange={(isAuthed) => setIsAdminAuthed(isAuthed)}
-        defaultSection={adminModalSection}
-      />
+      {isByungimuncilAdmin && (
+        <GoogleSheetConfigModal
+          isOpen={isGoogleSheetModalOpen && isByungimuncilAdmin}
+          onClose={() => setIsGoogleSheetModalOpen(false)}
+          bookings={bookings}
+          sheetSource={sheetSource}
+          onUpdateBookings={(updatedBookings, source) => {
+            setBookings(updatedBookings);
+            setSheetSource(source);
+            refreshCatalog();
+          }}
+          catalogProducts={catalogProducts}
+          catalogSource={catalogSource}
+          lastCatalogSync={lastCatalogSync}
+          onRefreshCatalog={refreshCatalog}
+          onUpdateCatalog={(newProds, source) => {
+            setCatalogProducts(newProds);
+            setCatalogSource(source);
+            setLastCatalogSync(new Date());
+          }}
+          isAdminAuthed={isByungimuncilAdmin}
+          onAdminAuthChange={(isAuthed) => setIsAdminAuthed(isAuthed)}
+          defaultSection={adminModalSection}
+        />
+      )}
     </div>
   );
 };

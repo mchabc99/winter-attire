@@ -430,20 +430,44 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
           </div>
         </div>
 
-        {/* Product Cards Grid: 2 columns on Mobile (< 768px), 3 to 4 columns on Desktop (> 768px) */}
-        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filteredProducts.map(({ item, availability, pricing }, index) => {
-            const isBooked = !availability.isAvailable;
-            const directProductPhoto = getDirectDriveImg(item.link_foto_produk);
-            const directSpecPhoto = getDirectDriveImg(item.link_foto_spek);
-
-            return (
+        {/* Product Cards Grid: Skeleton Loader when Loading, or 2 cols on Mobile / 3-4 cols on Desktop */}
+        {isLoading ? (
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 animate-fadeIn">
+            {Array.from({ length: 8 }).map((_, i) => (
               <div
-                key={item.id || `${item.kode_produk}-${index}`}
-                className={`group bg-white rounded-2xl overflow-hidden border border-slate-200/90 shadow-2xs hover:shadow-md transition-all duration-200 flex flex-col justify-between ${
-                  isBooked ? 'opacity-85 border-slate-200' : 'hover:border-[#0E7490]/50'
-                }`}
+                key={i}
+                className="bg-white rounded-2xl overflow-hidden border border-slate-200/90 shadow-2xs p-2.5 flex flex-col justify-between animate-pulse"
               >
+                <div>
+                  <div className="relative aspect-[4/5] bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl overflow-hidden flex items-center justify-center">
+                    <span className="w-8 h-8 rounded-full bg-slate-200/80" />
+                  </div>
+                  <div className="mt-2.5 space-y-1.5 px-0.5">
+                    <div className="h-3.5 bg-slate-200 rounded w-4/5" />
+                    <div className="h-3 bg-slate-100 rounded w-2/3" />
+                  </div>
+                </div>
+                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <div className="h-4 bg-slate-200 rounded w-16" />
+                  <div className="h-7 bg-slate-200 rounded-xl w-14" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {filteredProducts.map(({ item, availability, pricing }, index) => {
+              const isBooked = !availability.isAvailable;
+              const directProductPhoto = getDirectDriveImg(item.link_foto_produk);
+              const directSpecPhoto = getDirectDriveImg(item.link_foto_spek);
+
+              return (
+                <div
+                  key={item.id || `${item.kode_produk}-${index}`}
+                  className={`group bg-white rounded-2xl overflow-hidden border border-slate-200/90 shadow-2xs hover:shadow-md transition-all duration-200 flex flex-col justify-between ${
+                    isBooked ? 'opacity-85 border-slate-200' : 'hover:border-[#0E7490]/50'
+                  }`}
+                >
                 <div>
                   {/* 1. FOTO PRODUK (Aspek Rasio Konsisten 4:5, Bersih) */}
                   <div
@@ -561,9 +585,10 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
             );
           })}
         </div>
+        )}
 
         {/* Empty State */}
-        {filteredProducts.length === 0 && (
+        {!isLoading && filteredProducts.length === 0 && (
           <div className="text-center py-12 bg-slate-50/50 rounded-2xl border border-slate-200 mt-6">
             <Layers className="w-12 h-12 text-slate-300 mx-auto mb-3 stroke-[1.2]" />
             <h4 className="text-base font-bold text-slate-800">Tidak ada produk yang sesuai filter</h4>

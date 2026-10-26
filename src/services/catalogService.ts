@@ -157,16 +157,16 @@ export const DEFAULT_PRODUCT_FALLBACK_IMAGE = '/winter-attire-default-product.sv
 
 /**
  * Direct image converter for Google Drive links using high-speed Fife CDN (lh3.googleusercontent.com).
+ * Automatically extracts Google Drive ID and transforms into https://lh3.googleusercontent.com/d/[ID_FILE]
  * Prevents CORS or rate-limit blocks on public/published domains.
  */
 export function getDirectDriveImg(url: string | null | undefined): string {
   if (!url || typeof url !== 'string') return '';
-  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
-  if (match && match[1]) {
-    // Gunakan URL CDN direct Google lh3 agar tidak terblokir CORS/rate-limit
-    return `https://lh3.googleusercontent.com/d/${match[1]}`;
+  const fileId = extractGoogleDriveFileId(url);
+  if (fileId) {
+    return `https://lh3.googleusercontent.com/d/${fileId}`;
   }
-  return url;
+  return url.trim();
 }
 
 /**
@@ -207,20 +207,21 @@ export function getGoogleDriveImageCandidates(rawUrl: string, cacheBuster?: stri
 }
 
 /**
- * Converts any Google Drive link to direct image URL.
- * Defaults to Google's thumbnail CDN or lh3 static user content CDN.
+ * Converts any Google Drive link to direct image URL (https://lh3.googleusercontent.com/d/[ID_FILE]).
+ * Fallback to Google's thumbnail CDN or clean URL if not a Drive link.
  */
 export function convertGoogleDriveImageUrl(rawUrl: string, cacheBuster?: string | number): string {
   if (!rawUrl) return '';
-  const direct = getDirectDriveImg(rawUrl);
-  if (direct && direct !== rawUrl) {
+  const fileId = extractGoogleDriveFileId(rawUrl);
+  if (fileId) {
+    const directUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
     if (cacheBuster) {
-      return `${direct}?_cb=${cacheBuster}`;
+      return `${directUrl}?_cb=${cacheBuster}`;
     }
-    return direct;
+    return directUrl;
   }
-  const candidates = getGoogleDriveImageCandidates(rawUrl, cacheBuster);
-  return candidates.length > 0 ? candidates[0] : rawUrl.trim();
+  const clean = sanitizeMediaUrl(rawUrl);
+  return clean || rawUrl.trim();
 }
 
 /**
@@ -603,12 +604,23 @@ export function parseCatalogCsv(csvText: string): DynamicCatalogProduct[] {
     let cleanFotoProduk = sanitizeMediaUrl(rawFotoProduk);
     let cleanFotoSpek = sanitizeMediaUrl(rawFotoSpek);
 
+    // Convert directly to lh3 format immediately upon parsing
+    const fileIdProduk = extractGoogleDriveFileId(cleanFotoProduk);
+    if (fileIdProduk) {
+      cleanFotoProduk = `https://lh3.googleusercontent.com/d/${fileIdProduk}`;
+    }
+
+    const fileIdSpek = extractGoogleDriveFileId(cleanFotoSpek);
+    if (fileIdSpek) {
+      cleanFotoSpek = `https://lh3.googleusercontent.com/d/${fileIdSpek}`;
+    }
+
     // Check if multiple Google Drive IDs were included in a single cell
     if (rawFotoProduk && !cleanFotoSpek) {
       const allIds = extractAllGoogleDriveFileIds(rawFotoProduk);
       if (allIds.length >= 2) {
-        cleanFotoProduk = `https://drive.google.com/file/d/${allIds[0]}/view?usp=sharing`;
-        cleanFotoSpek = `https://drive.google.com/file/d/${allIds[1]}/view?usp=sharing`;
+        cleanFotoProduk = `https://lh3.googleusercontent.com/d/${allIds[0]}`;
+        cleanFotoSpek = `https://lh3.googleusercontent.com/d/${allIds[1]}`;
       }
     }
 
@@ -720,11 +732,21 @@ export function getFallbackDynamicCatalog(): DynamicCatalogProduct[] {
   });
 }
 
-export const DEFAULT_CATALOG_SHEET_URL = '';
+/**
+ * Hardcoded Master Google Sheets CSV URL for Winter Attire Official Catalog.
+ * Ensures the app immediately loads real catalog data on first load even if localStorage is empty
+ * (e.g. Incognito, private mode, new visitor).
+ */
+export const DEFAULT_CSV_URL =
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CATALOG_URL) ||
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vT5K7qOQ_WinterAttire_Catalog_Master/pub?output=csv';
+
+export const DEFAULT_CATALOG_SHEET_URL = DEFAULT_CSV_URL;
 
 /**
  * Retrieves saved Google Sheets URL for Catalog from URL params, localStorage, or environment.
  * Cross-checks with general spreadsheet configuration to prevent sync gaps.
+ * Falls back to DEFAULT_CSV_URL if localStorage is empty.
  */
 export function getCatalogSheetUrl(): string {
   if (typeof window !== 'undefined') {
@@ -759,7 +781,7 @@ export function getCatalogSheetUrl(): string {
     const envCsvUrl = (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CSV_URL;
     if (envCsvUrl && envCsvUrl.trim()) return envCsvUrl.trim();
   }
-  return DEFAULT_CATALOG_SHEET_URL;
+  return DEFAULT_CSV_URL;
 }
 
 export const getSavedCatalogSheetUrl = getCatalogSheetUrl;

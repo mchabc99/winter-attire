@@ -53,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
               <img
                 src="/winter-attire-logo.svg"
                 alt="Winter Attire Logo"
+                referrerPolicy="no-referrer"
                 className="w-[38px] h-[38px] rounded-xl object-cover border border-[#BCE4E8] shadow-2xs group-hover:scale-105 transition-transform shrink-0"
               />
               <div className="flex flex-col justify-center leading-tight">

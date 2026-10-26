@@ -102,10 +102,12 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
   // Active Main Section (Catalog vs Bookings)
   const [activeSection, setActiveSection] = useState<'catalog' | 'bookings'>(defaultSection);
 
-  // Sync defaultSection prop when modal opens
+  // Sync defaultSection and URLs when modal opens
   useEffect(() => {
     if (isOpen) {
       setActiveSection(defaultSection);
+      setCatalogUrl(getSavedCatalogSheetUrl());
+      setBookingUrl(typeof window !== 'undefined' ? localStorage.getItem(GOOGLE_SHEET_STORAGE_KEY) || '' : '');
     }
   }, [isOpen, defaultSection]);
 
