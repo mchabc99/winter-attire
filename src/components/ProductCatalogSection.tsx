@@ -34,7 +34,7 @@ interface ProductCatalogSectionProps {
   isLoading?: boolean;
   sheetSource?: 'google_sheets' | 'fallback';
   lastSyncTime?: Date | null;
-  onRefreshCatalog: () => void;
+  onRefreshCatalog?: () => void;
   onUpdateProducts?: (newProducts: DynamicCatalogProduct[], source: 'google_sheets' | 'fallback') => void;
   onAddToCart?: (item: CartItem) => void;
   onViewCart?: () => void;
@@ -229,63 +229,6 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
   return (
     <section id="catalogSection" className="my-12">
       <div className="glass-frost-card rounded-3xl p-6 sm:p-8 shadow-xl border border-white/90">
-        {/* Admin Operational Bar (Only displayed when authenticated via Admin PIN) */}
-        {isAdminAuthed && (
-          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-teal-950 via-[#0C3B43] to-slate-900 text-white shadow-md border border-teal-600/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500 text-slate-950">
-                    Mode Admin Aktif
-                  </span>
-                  <span className="text-xs font-bold text-teal-100">
-                    {sheetSource === 'google_sheets' ? 'Google Sheets Terkoneksi Live' : 'Katalog Standar Toko'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-teal-200 mt-0.5">
-                  {products.length} produk • Terakhir refresh:{' '}
-                  {lastSyncTime ? lastSyncTime.toLocaleTimeString('id-ID') : 'Baru saja'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={onRefreshCatalog}
-                disabled={isLoading}
-                className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
-                title="Refresh katalog langsung dari Google Sheets"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>{isLoading ? 'Menyinkronkan...' : 'Refresh Katalog'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onOpenAdminStok}
-                className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                title="Kelola URL Google Sheets & data stok"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-teal-300" />
-                <span>Kelola Sheets</span>
-              </button>
-
-              {onLogoutAdmin && (
-                <button
-                  type="button"
-                  onClick={onLogoutAdmin}
-                  className="px-2.5 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-200 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                  title="Kunci / Keluar Mode Admin"
-                >
-                  <Lock className="w-3 h-3" />
-                  <span>Kunci</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Section Header */}
         <div className="pb-6 border-b border-slate-200/80">
@@ -476,8 +419,8 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
                     title="Klik untuk melihat Detail Spek lengkap"
                   >
                     <SafeProductImage
-                      src={item.image || directProductPhoto || directSpecPhoto}
-                      secondarySrc={item.specImage || directSpecPhoto}
+                      src={item.link_foto_produk || item.image || directProductPhoto || directSpecPhoto}
+                      secondarySrc={item.link_foto_spek || item.specImage || directSpecPhoto}
                       alt={item.nama_produk}
                       category={item.kategori}
                       code={item.kode_produk}
