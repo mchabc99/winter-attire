@@ -160,24 +160,11 @@ export default function App() {
     setIsGoogleSheetModalOpen(false);
   };
 
-  // Dynamic 22-Column Catalog from Google Sheets (100% Dynamic & Synchronized)
-  // Seed with cached data from localStorage if available, or fallback catalog for instant first-load
-  const [catalogProducts, setCatalogProducts] = useState<DynamicCatalogProduct[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem(CATALOG_CACHE_STORAGE_KEY);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-          }
-        }
-      } catch {
-        // fallback
-      }
-    }
-    return getFallbackDynamicCatalog();
-  });
+  // Dynamic 22-Column Catalog from Google Sheets (100% Dynamic, Real-Time & Incognito Compatible)
+  // Initial state uses fresh default catalog without relying on stale cached image URLs in localStorage
+  const [catalogProducts, setCatalogProducts] = useState<DynamicCatalogProduct[]>(() =>
+    getFallbackDynamicCatalog()
+  );
   const [isLoadingCatalog, setIsLoadingCatalog] = useState<boolean>(true);
   const [catalogSource, setCatalogSource] = useState<'google_sheets' | 'fallback'>('fallback');
   const [lastCatalogSync, setLastCatalogSync] = useState<Date | null>(null);
@@ -186,10 +173,12 @@ export default function App() {
 
   const refreshCatalog = async () => {
     setIsLoadingCatalog(true);
-    setCacheBusterKey(Date.now());
+    const freshTimestamp = Date.now();
+    setCacheBusterKey(freshTimestamp);
     try {
       const result = await fetchCatalogFromGoogleSheet();
       if (result.products && result.products.length > 0) {
+        // Immediately overwrite catalog state with real-time parsed data from Google Sheets
         setCatalogProducts(result.products);
         setCatalogSource(result.source);
         setLastCatalogSync(new Date());

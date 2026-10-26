@@ -4,6 +4,7 @@ import {
   getGoogleDriveImageCandidates,
   extractGoogleDriveFileId,
   isGoogleDriveFolder,
+  resolveCatalogImageUrl,
   DEFAULT_PRODUCT_FALLBACK_IMAGE
 } from '../services/catalogService';
 import {
@@ -48,50 +49,59 @@ export const SafeProductImage: React.FC<SafeProductImageProps> = ({
   const isFolder = isGoogleDriveFolder(cleanSrc);
   const isDriveFile = Boolean(extractGoogleDriveFileId(cleanSrc));
 
-  // Consistent official Winter Attire logo fallback with #C2E6ED background (never random Unsplash/Picsum)
+  // Consistent official Winter Attire logo fallback with #C2E6ED background
   const defaultFallback = fallbackSrc || DEFAULT_PRODUCT_FALLBACK_IMAGE;
 
-  // Effective cache-buster (uses either parent cacheKey or user's local retry timestamp)
+  // Effective cache-buster
   const effectiveCacheBuster = localCacheBuster || cacheKey || null;
 
-  // Direct LH3 Google Drive URL conversion
-  const directDriveUrl = getDirectDriveImg(cleanSrc);
-  const secondaryDirectDriveUrl = secondarySrc ? getDirectDriveImg(secondarySrc.trim()) : '';
+  // Resolve Drive image URLs
+  const resolution = useMemo(() => resolveCatalogImageUrl(cleanSrc), [cleanSrc]);
+  const secondaryResolution = useMemo(
+    () => (secondarySrc ? resolveCatalogImageUrl(secondarySrc.trim()) : null),
+    [secondarySrc]
+  );
 
-  // Generate prioritized candidates with cache-busting support
+  // Generate prioritized candidates: 1. lh3...=s800 -> 2. thumbnail?sz=w800 -> 3. original / secondary -> 4. fallback placeholder
   const candidates = useMemo(() => {
-    // If it's a folder, do not try to render as an image tag
     if (isFolder) return [];
 
     const list: string[] = [];
 
-    // 1. Primary direct lh3 CDN URL (requested direct format)
-    if (directDriveUrl) {
-      if (effectiveCacheBuster && directDriveUrl.startsWith('http')) {
-        const sep = directDriveUrl.includes('?') ? '&' : '?';
-        list.push(`${directDriveUrl}${sep}_cb=${effectiveCacheBuster}`);
+    // 1. Primary: Google Fife direct CDN with optimal =s800
+    if (resolution.primaryUrl) {
+      if (effectiveCacheBuster && resolution.primaryUrl.startsWith('http')) {
+        const sep = resolution.primaryUrl.includes('?') ? '&' : '?';
+        list.push(`${resolution.primaryUrl}${sep}_cb=${effectiveCacheBuster}`);
       }
-      list.push(directDriveUrl);
+      list.push(resolution.primaryUrl);
     }
 
-    // 2. Primary source candidates (Drive thumbnails & download endpoints)
-    if (cleanSrc) {
-      const primaryCandidates = getGoogleDriveImageCandidates(cleanSrc, effectiveCacheBuster || undefined);
-      list.push(...primaryCandidates);
+    // 2. Fallback 1: Google Drive official thumbnail endpoint (sz=w800)
+    if (resolution.thumbnailUrl && resolution.thumbnailUrl !== resolution.primaryUrl) {
+      list.push(resolution.thumbnailUrl);
     }
 
-    // 3. Secondary source candidates (e.g. foto spek <-> foto produk)
-    if (secondaryDirectDriveUrl && secondaryDirectDriveUrl !== directDriveUrl) {
-      list.push(secondaryDirectDriveUrl);
+    // 3. Fallback 2: lh3 without parameter or direct download endpoint
+    if (resolution.isDrive && resolution.driveId) {
+      list.push(`https://lh3.googleusercontent.com/d/${resolution.driveId}`);
+      list.push(`https://drive.google.com/uc?export=view&id=${resolution.driveId}`);
     }
-    if (secondarySrc && secondarySrc.trim() && secondarySrc.trim() !== cleanSrc) {
-      const secondaryCandidates = getGoogleDriveImageCandidates(secondarySrc.trim(), effectiveCacheBuster || undefined);
-      list.push(...secondaryCandidates);
+
+    // 4. Secondary source candidates (e.g. foto spek)
+    if (secondaryResolution?.primaryUrl && secondaryResolution.primaryUrl !== resolution.primaryUrl) {
+      list.push(secondaryResolution.primaryUrl);
+      if (secondaryResolution.thumbnailUrl) {
+        list.push(secondaryResolution.thumbnailUrl);
+      }
     }
+
+    // 5. Default product jacket placeholder
+    list.push(defaultFallback);
 
     // Deduplicate candidate URLs
     return Array.from(new Set(list.filter(Boolean)));
-  }, [cleanSrc, secondarySrc, isFolder, directDriveUrl, secondaryDirectDriveUrl, effectiveCacheBuster]);
+  }, [cleanSrc, isFolder, resolution, secondaryResolution, effectiveCacheBuster, defaultFallback]);
 
   // Reset states when source changes or parent cacheKey changes
   useEffect(() => {

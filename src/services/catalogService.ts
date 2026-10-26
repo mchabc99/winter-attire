@@ -74,34 +74,44 @@ export function extractGoogleDriveFolderId(rawUrl: string): string | null {
  * - drive.google.com/file/d/{FILE_ID} (without https://)
  * - Raw 25-50 alphanumeric file IDs
  */
+/**
+ * Extracts pure Google Drive file ID from virtually any URL or cell value using regex /[-\w]{25,}/.
+ * Explicitly ignores folder links so they don't break image tags.
+ * Handles:
+ * - https://drive.google.com/file/d/{FILE_ID}/view...
+ * - https://drive.google.com/file/u/0/d/{FILE_ID}/...
+ * - https://drive.google.com/open?id={FILE_ID}
+ * - https://drive.google.com/uc?id={FILE_ID}
+ * - https://lh3.googleusercontent.com/d/{FILE_ID}
+ * - Raw 25-50 alphanumeric file IDs
+ */
 export function extractGoogleDriveFileId(rawUrl: string): string | null {
   if (!rawUrl) return null;
-  let clean = String(rawUrl).trim();
+  const clean = String(rawUrl).trim();
 
   // If it's a folder, do not treat folder ID as an image file ID
   if (isGoogleDriveFolder(clean)) {
     return null;
   }
 
-  // Handle formulas or multiple URLs: take first occurrence of Google Drive URL if present
-  const gdriveUrlMatch = clean.match(/(?:https?:\/\/)?(?:drive\.google\.com|lh3\.googleusercontent\.com)[^\s"'>)]+/i);
-  const target = gdriveUrlMatch ? gdriveUrlMatch[0] : clean;
+  // 1. Google Drive specific patterns (/d/ID, id=ID, lh3.../d/ID)
+  const driveSpecificMatch = clean.match(/(?:drive\.google\.com\/(?:file\/(?:u\/\d+\/)?d\/|open\?id=|uc\?(?:export=view&)?id=)|lh3\.googleusercontent\.com\/(?:u\/\d+\/)?d\/)([-\w]{25,})/i);
+  if (driveSpecificMatch && driveSpecificMatch[1]) {
+    return driveSpecificMatch[1];
+  }
 
-  // 1. Standard file/d/{id} or file/u/0/d/{id} pattern
-  const fileDMatch = target.match(/drive\.google\.com\/file\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]+)/i);
-  if (fileDMatch && fileDMatch[1]) return fileDMatch[1];
+  // 2. Query param ?id= or &id=
+  const idQueryMatch = clean.match(/[?&]id=([-\w]{25,})/i);
+  if (idQueryMatch && idQueryMatch[1]) {
+    return idQueryMatch[1];
+  }
 
-  // 2. Query param id={id}
-  const idQueryMatch = target.match(/[?&]id=([a-zA-Z0-9_-]+)/i);
-  if (idQueryMatch && idQueryMatch[1]) return idQueryMatch[1];
-
-  // 3. lh3.googleusercontent.com/d/{id}
-  const lh3Match = target.match(/lh3\.googleusercontent\.com\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]+)/i);
-  if (lh3Match && lh3Match[1]) return lh3Match[1];
-
-  // 4. Raw file ID (standard Google Drive IDs are 25 to 45 chars of base64url)
-  if (/^[a-zA-Z0-9_-]{25,45}$/.test(target)) {
-    return target;
+  // 3. Fallback: match any base64 / alphanumeric ID with regex /[-\w]{25,}/
+  if (!clean.includes('spreadsheets') && !clean.includes('unsplash.com')) {
+    const rawMatch = clean.match(/[-\w]{25,}/);
+    if (rawMatch) {
+      return rawMatch[0];
+    }
   }
 
   return null;
@@ -112,7 +122,7 @@ export function extractGoogleDriveFileId(rawUrl: string): string | null {
  */
 export function extractAllGoogleDriveFileIds(raw: string): string[] {
   if (!raw) return [];
-  const matches = String(raw).matchAll(/([a-zA-Z0-9_-]{25,45})/g);
+  const matches = String(raw).matchAll(/([-\w]{25,})/g);
   const ids: string[] = [];
   for (const m of matches) {
     if (m[1] && !ids.includes(m[1])) {
@@ -155,45 +165,86 @@ export function sanitizeMediaUrl(raw: string): string {
 
 export const DEFAULT_PRODUCT_FALLBACK_IMAGE = '/winter-attire-default-product.svg';
 
+export interface GoogleDriveImageResolution {
+  primaryUrl: string; // https://lh3.googleusercontent.com/d/${id}=s800
+  thumbnailUrl: string; // https://drive.google.com/thumbnail?id=${id}&sz=w800
+  originalUrl: string;
+  isDrive: boolean;
+  driveId: string | null;
+}
+
 /**
- * Direct image converter for Google Drive links using high-speed Fife CDN (lh3.googleusercontent.com).
- * Automatically extracts Google Drive ID and transforms into https://lh3.googleusercontent.com/d/[ID_FILE]
+ * Utilitas khusus untuk menangani link gambar dari kolom CSV:
+ * - Ekstrak Google Drive ID menggunakan regex: /[-\w]{25,}/ (mencakup /d/ID/view, id=ID, raw ID)
+ * - Konversi URL utama ke CDN Google: https://lh3.googleusercontent.com/d/${id}=s800 (=s800 optimasi resolusi & bypass CORS)
+ * - Siapkan fallback pertama: https://drive.google.com/thumbnail?id=${id}&sz=w800
+ * - Siapkan fallback kedua jika link bukan Google Drive: gunakan URL aslinya langsung.
+ */
+export function resolveCatalogImageUrl(rawUrl: string | null | undefined): GoogleDriveImageResolution {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return {
+      primaryUrl: DEFAULT_PRODUCT_FALLBACK_IMAGE,
+      thumbnailUrl: DEFAULT_PRODUCT_FALLBACK_IMAGE,
+      originalUrl: '',
+      isDrive: false,
+      driveId: null
+    };
+  }
+
+  const clean = sanitizeMediaUrl(rawUrl);
+  const driveId = extractGoogleDriveFileId(clean);
+
+  if (driveId) {
+    return {
+      primaryUrl: `https://lh3.googleusercontent.com/d/${driveId}=s800`,
+      thumbnailUrl: `https://drive.google.com/thumbnail?id=${driveId}&sz=w800`,
+      originalUrl: clean,
+      isDrive: true,
+      driveId
+    };
+  }
+
+  return {
+    primaryUrl: clean || DEFAULT_PRODUCT_FALLBACK_IMAGE,
+    thumbnailUrl: clean || DEFAULT_PRODUCT_FALLBACK_IMAGE,
+    originalUrl: clean,
+    isDrive: false,
+    driveId: null
+  };
+}
+
+/**
+ * Direct image converter for Google Drive links using high-speed Fife CDN (lh3.googleusercontent.com/d/{id}=s800).
  * Prevents CORS or rate-limit blocks on public/published domains.
  */
 export function getDirectDriveImg(url: string | null | undefined): string {
   if (!url || typeof url !== 'string') return '';
-  const fileId = extractGoogleDriveFileId(url);
-  if (fileId) {
-    return `https://lh3.googleusercontent.com/d/${fileId}`;
-  }
-  return url.trim();
+  const resolved = resolveCatalogImageUrl(url);
+  return resolved.primaryUrl;
 }
 
 /**
  * Returns prioritized direct image CDN URLs for Google Drive images.
  * Provides Google's high-speed Fife CDN (lh3.googleusercontent.com) and Drive thumbnail endpoints.
- * Supports cacheBuster parameter to force browser to bypass cached 403 Forbidden responses.
+ * Supports cacheBuster parameter to force browser to bypass cached responses.
  */
 export function getGoogleDriveImageCandidates(rawUrl: string, cacheBuster?: string | number): string[] {
   if (!rawUrl) return [];
-  const fileId = extractGoogleDriveFileId(rawUrl);
+  const resolved = resolveCatalogImageUrl(rawUrl);
 
-  if (fileId) {
+  if (resolved.isDrive && resolved.driveId) {
     const cbParam = cacheBuster ? `&_cb=${cacheBuster}` : '';
-    const cbQuery = cacheBuster ? `?_cb=${cacheBuster}` : '';
 
     return [
-      // 1. Google Fife direct CDN (lh3.googleusercontent.com/d/{id})
-      `https://lh3.googleusercontent.com/d/${fileId}${cbQuery}`,
-      `https://lh3.googleusercontent.com/d/${fileId}=w1200${cbQuery}`,
-      `https://lh3.googleusercontent.com/d/${fileId}=s1000${cbQuery}`,
-      // 2. Official Google Drive thumbnail generator (reflects permission changes fastest)
-      `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200${cbParam}`,
-      `https://drive.google.com/thumbnail?id=${fileId}&sz=w800${cbParam}`,
-      // 3. User content download & preview endpoints
-      `https://drive.google.com/uc?export=view&id=${fileId}${cbParam}`,
-      `https://drive.google.com/uc?id=${fileId}${cbParam}`,
-      `https://docs.google.com/uc?export=download&id=${fileId}${cbParam}`
+      // 1. Primary: Google Fife direct CDN with optimal =s800 parameter
+      `${resolved.primaryUrl}${cbParam}`,
+      // 2. Fallback 1: Google Drive official thumbnail endpoint
+      `${resolved.thumbnailUrl}${cbParam}`,
+      // 3. Fallback 2: lh3 without parameter
+      `https://lh3.googleusercontent.com/d/${resolved.driveId}`,
+      // 4. Download & preview endpoints
+      `https://drive.google.com/uc?export=view&id=${resolved.driveId}${cbParam}`,
+      `https://drive.google.com/uc?id=${resolved.driveId}${cbParam}`
     ];
   }
 
@@ -207,21 +258,19 @@ export function getGoogleDriveImageCandidates(rawUrl: string, cacheBuster?: stri
 }
 
 /**
- * Converts any Google Drive link to direct image URL (https://lh3.googleusercontent.com/d/[ID_FILE]).
- * Fallback to Google's thumbnail CDN or clean URL if not a Drive link.
+ * Converts any Google Drive link to direct image URL (https://lh3.googleusercontent.com/d/[ID_FILE]=s800).
+ * Fallback to clean URL if not a Drive link.
  */
 export function convertGoogleDriveImageUrl(rawUrl: string, cacheBuster?: string | number): string {
   if (!rawUrl) return '';
-  const fileId = extractGoogleDriveFileId(rawUrl);
-  if (fileId) {
-    const directUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+  const resolved = resolveCatalogImageUrl(rawUrl);
+  if (resolved.isDrive) {
     if (cacheBuster) {
-      return `${directUrl}?_cb=${cacheBuster}`;
+      return `${resolved.primaryUrl}&_cb=${cacheBuster}`;
     }
-    return directUrl;
+    return resolved.primaryUrl;
   }
-  const clean = sanitizeMediaUrl(rawUrl);
-  return clean || rawUrl.trim();
+  return resolved.primaryUrl;
 }
 
 /**
@@ -604,29 +653,20 @@ export function parseCatalogCsv(csvText: string): DynamicCatalogProduct[] {
     let cleanFotoProduk = sanitizeMediaUrl(rawFotoProduk);
     let cleanFotoSpek = sanitizeMediaUrl(rawFotoSpek);
 
-    // Convert directly to lh3 format immediately upon parsing
-    const fileIdProduk = extractGoogleDriveFileId(cleanFotoProduk);
-    if (fileIdProduk) {
-      cleanFotoProduk = `https://lh3.googleusercontent.com/d/${fileIdProduk}`;
-    }
-
-    const fileIdSpek = extractGoogleDriveFileId(cleanFotoSpek);
-    if (fileIdSpek) {
-      cleanFotoSpek = `https://lh3.googleusercontent.com/d/${fileIdSpek}`;
-    }
-
     // Check if multiple Google Drive IDs were included in a single cell
     if (rawFotoProduk && !cleanFotoSpek) {
       const allIds = extractAllGoogleDriveFileIds(rawFotoProduk);
       if (allIds.length >= 2) {
-        cleanFotoProduk = `https://lh3.googleusercontent.com/d/${allIds[0]}`;
-        cleanFotoSpek = `https://lh3.googleusercontent.com/d/${allIds[1]}`;
+        cleanFotoProduk = `https://lh3.googleusercontent.com/d/${allIds[0]}=s800`;
+        cleanFotoSpek = `https://lh3.googleusercontent.com/d/${allIds[1]}=s800`;
       }
     }
 
-    // Prioritize individual links with cross-fallback if either is missing
-    const link_foto_produk = cleanFotoProduk || cleanFotoSpek;
-    const link_foto_spek = cleanFotoSpek || cleanFotoProduk;
+    const resolvedProduk = resolveCatalogImageUrl(cleanFotoProduk);
+    const resolvedSpek = resolveCatalogImageUrl(cleanFotoSpek);
+
+    const link_foto_produk = resolvedProduk.primaryUrl || resolvedSpek.primaryUrl;
+    const link_foto_spek = resolvedSpek.primaryUrl || link_foto_produk;
 
     const harga_3 = parseNumber(getValue(idxMap.harga_sewa_3_hari), 0);
     const harga_6 = parseNumber(getValue(idxMap.harga_sewa_6_hari), harga_3 ? Math.round(harga_3 * 1.5) : 0);
@@ -820,13 +860,16 @@ export async function fetchCatalogFromGoogleSheet(
   const csvExportUrl = convertToDirectCsvUrl(rawUrl);
 
   const fetchCsvContent = async (url: string): Promise<string> => {
-    const cacheBuster = `_t=${Date.now()}`;
-    const targetUrl = url.includes('?') ? `${url}&${cacheBuster}` : `${url}?${cacheBuster}`;
+    const sep = url.includes('?') ? '&' : '?';
+    const noCacheUrl = `${url}${sep}t=${Date.now()}`;
 
-    const res = await fetch(targetUrl, {
+    const res = await fetch(noCacheUrl, {
       method: 'GET',
       headers: {
-        Accept: 'text/csv, text/plain, */*'
+        Accept: 'text/csv, text/plain, */*',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0'
       },
       cache: 'no-store'
     });
@@ -849,8 +892,10 @@ export async function fetchCatalogFromGoogleSheet(
       csvText = await fetchCsvContent(csvExportUrl);
     } catch (directErr: any) {
       console.warn('Direct catalog CSV fetch failed, attempting CORS proxy:', directErr);
-      // Fallback through AllOrigins proxy
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(csvExportUrl)}`;
+      // Fallback through AllOrigins proxy with fresh timestamp
+      const sep = csvExportUrl.includes('?') ? '&' : '?';
+      const noCacheExportUrl = `${csvExportUrl}${sep}t=${Date.now()}`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(noCacheExportUrl)}`;
       csvText = await fetchCsvContent(proxyUrl);
     }
 
