@@ -29,11 +29,10 @@ import {
   calculateTieredRentalPrice,
   calculateRentalDays,
   getCatalogSheetUrl,
-  DEFAULT_KATALOG_CSV_URL,
-  DEFAULT_BOOKING_CSV_URL,
   DEFAULT_CSV_URL,
   CATALOG_CACHE_STORAGE_KEY
 } from './services/catalogService';
+import { DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from './constants';
 import { loadBookings, checkProductAvailability } from './services/availabilityService';
 import { Header } from './components/Header';
 import { RentalForm } from './components/RentalForm';
@@ -162,8 +161,11 @@ export default function App() {
     setIsGoogleSheetModalOpen(false);
   };
 
+  // Inisialisasi state CSV langsung menggunakan konstanta di constants.ts
+  const [katalogUrl, setKatalogUrl] = useState(DEFAULT_KATALOG_CSV);
+  const [bookingUrl, setBookingUrl] = useState(DEFAULT_BOOKING_CSV);
+
   // Dynamic 22-Column Catalog from Google Sheets (100% Dynamic, Real-Time & Incognito Compatible)
-  // Initial state uses fresh default catalog without relying on stale cached image URLs in localStorage
   const [catalogProducts, setCatalogProducts] = useState<DynamicCatalogProduct[]>(() =>
     getFallbackDynamicCatalog()
   );
@@ -173,20 +175,27 @@ export default function App() {
   const [cacheBusterKey, setCacheBusterKey] = useState<number>(Date.now());
   const [catalogInitialSize, setCatalogInitialSize] = useState<string>('all');
 
-  const refreshCatalog = async (sheetUrl?: string) => {
+  // Logika fetch data utama: langsung panggil dengan anti-cache query timestamp
+  const loadData = async (catUrl = katalogUrl, bookUrl = bookingUrl) => {
     setIsLoadingCatalog(true);
     const freshTimestamp = Date.now();
     setCacheBusterKey(freshTimestamp);
-    try {
-      const activeUrl =
-        sheetUrl !== undefined
-          ? sheetUrl
-          : (typeof window !== 'undefined' ? localStorage.getItem('katalog_csv_url') : null) ||
-            DEFAULT_KATALOG_CSV_URL;
 
-      const result = await fetchCatalogFromGoogleSheet(activeUrl);
+    // 1. Langsung muat data booking dengan anti-cache
+    loadBookings(bookUrl).then(({ bookings: fetchedBookings, source }) => {
+      setBookings(fetchedBookings);
+      setSheetSource(source);
+    }).catch((err) => {
+      console.warn('Gagal memuat jadwal booking:', err);
+      setBookings([]);
+      setSheetSource('none');
+    });
+
+    // 2. Langsung muat data katalog dengan anti-cache
+    try {
+      const activeCatalog = catUrl || DEFAULT_KATALOG_CSV;
+      const result = await fetchCatalogFromGoogleSheet(activeCatalog);
       if (result.products && result.products.length > 0) {
-        // Immediately overwrite catalog state with real-time parsed data from Google Sheets
         setCatalogProducts(result.products);
         setCatalogSource(result.source);
         setLastCatalogSync(new Date());
@@ -197,40 +206,31 @@ export default function App() {
     } catch (err) {
       console.warn('Could not refresh dynamic catalog:', err);
       setCatalogProducts(getFallbackDynamicCatalog());
+      setCatalogSource('fallback');
     } finally {
       setIsLoadingCatalog(false);
     }
   };
 
+  const refreshCatalog = async () => {
+    await loadData(katalogUrl, bookingUrl);
+  };
+
   useEffect(() => {
-    // 2. LOGIKA INITIALIZATION (FIRST LOAD & PRIVATE BROWSER FIX):
-    // Active URLs: localStorage or DEFAULT_*_CSV_URL constants
-    const activeCatalogUrl =
-      (typeof window !== 'undefined' ? localStorage.getItem('katalog_csv_url') : null) ||
-      DEFAULT_KATALOG_CSV_URL;
-    const activeBookingUrl =
-      (typeof window !== 'undefined' ? localStorage.getItem('booking_csv_url') : null) ||
-      DEFAULT_BOOKING_CSV_URL;
+    // Pada useEffect saat pertama kali render (mount), LANGSUNG panggil fungsi loadData()
+    // tanpa melakukan pengecekan apakah user adalah admin atau apakah localStorage kosong.
+    loadData();
 
-    // Auto-fetch bookings
-    loadBookings(activeBookingUrl).then(({ bookings: fetchedBookings, source }) => {
-      setBookings(fetchedBookings);
-      setSheetSource(source);
-    });
-
-    // Auto-fetch dynamic catalog on first load
-    refreshCatalog(activeCatalogUrl).then(() => {
-      if (typeof window !== 'undefined' && window.location.search) {
-        const sp = new URLSearchParams(window.location.search);
-        if (sp.has('sheet') || sp.has('catalog') || sp.has('catalog_sheet') || sp.has('bookings')) {
-          try {
-            window.history.replaceState({}, '', window.location.pathname);
-          } catch {
-            // ignore
-          }
+    if (typeof window !== 'undefined' && window.location.search) {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.has('sheet') || sp.has('catalog') || sp.has('catalog_sheet') || sp.has('bookings')) {
+        try {
+          window.history.replaceState({}, '', window.location.pathname);
+        } catch {
+          // ignore
         }
       }
-    });
+    }
   }, []);
 
   // Cart State (Initialized clean - user selects what they want)

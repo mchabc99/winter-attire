@@ -41,6 +41,7 @@ import {
   saveBookingSheetUrl,
   GOOGLE_SHEET_STORAGE_KEY
 } from '../services/availabilityService';
+import { DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from '../constants';
 import {
   DynamicCatalogProduct,
   fetchCatalogFromGoogleSheet,
@@ -110,8 +111,8 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setActiveSection(defaultSection);
-      setCatalogUrl(getSavedCatalogSheetUrl());
-      setBookingUrl(getBookingSheetUrl());
+      setCatalogUrl(DEFAULT_KATALOG_CSV || getSavedCatalogSheetUrl());
+      setBookingUrl(DEFAULT_BOOKING_CSV || getBookingSheetUrl());
     }
   }, [isOpen, defaultSection]);
 
@@ -131,7 +132,7 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
   // Bookings Tab State
   const [bookingTab, setBookingTab] = useState<'url' | 'paste'>('url');
   const [bookingUrl, setBookingUrl] = useState(() => {
-    return getBookingSheetUrl();
+    return DEFAULT_BOOKING_CSV || getBookingSheetUrl();
   });
   const [bookingPastedText, setBookingPastedText] = useState('');
   const [isBookingLoading, setIsBookingLoading] = useState(false);
@@ -143,7 +144,7 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
   // Catalog Tab State
   const [catalogTab, setCatalogTab] = useState<'url' | 'paste' | 'photos'>('url');
   const [catalogUrl, setCatalogUrl] = useState(() => {
-    return getSavedCatalogSheetUrl();
+    return DEFAULT_KATALOG_CSV || getSavedCatalogSheetUrl();
   });
   const [catalogPastedText, setCatalogPastedText] = useState('');
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
@@ -771,38 +772,40 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
                         {catalogTab === 'url' ? (
                           <div className="space-y-4">
                             <div>
-                              <label className="block text-xs font-bold text-slate-700 mb-1">
-                                Tautan Publik Google Sheets (22 Kolom):
-                              </label>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label className="block text-xs font-bold text-slate-700">
+                                  Tautan Publik Google Sheets (22 Kolom):
+                                </label>
+                                <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                  Tersimpan Permanen di Kode
+                                </span>
+                              </div>
                               <input
                                 type="url"
-                                value={catalogUrl}
+                                readOnly
+                                value={catalogUrl || DEFAULT_KATALOG_CSV}
                                 onChange={(e) => setCatalogUrl(e.target.value)}
-                                placeholder="https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?output=csv"
-                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600 bg-slate-50 font-mono"
+                                placeholder="Tersimpan permanen di source code (constants.ts)"
+                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 bg-slate-100 font-mono select-all focus:outline-none"
                               />
                               <p className="text-[11px] text-slate-500 mt-1">
-                                Gunakan tautan <em>Publish to the web (CSV)</em> atau tautan bagikan <em>Anyone with link can view</em>.
+                                URL telah ditanamkan permanen di source code (<code>constants.ts</code>). Browser otomatis memuat data terbaru tanpa perlu input ulang link.
                               </p>
                             </div>
 
                             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                              <button
-                                type="button"
-                                onClick={handleResetCatalogUrl}
-                                className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
-                              >
-                                Reset ke URL Resmi Winter Attire
-                              </button>
+                              <span className="text-[11px] text-slate-400">
+                                *Memuat data langsung dari Google Sheets via timestamp anti-cache.
+                              </span>
 
                               <button
                                 type="button"
-                                onClick={handleSaveAndSyncCatalogUrl}
+                                onClick={handleRefreshCatalogNow}
                                 disabled={isCatalogLoading}
                                 className="px-4 py-2 bg-[#0C3B43] hover:bg-[#10515B] text-white text-xs font-black rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
                               >
                                 <RefreshCw className={`w-3.5 h-3.5 ${isCatalogLoading ? 'animate-spin' : ''}`} />
-                                <span>{isCatalogLoading ? 'Menyinkronkan...' : 'Simpan & Hubungkan Live'}</span>
+                                <span>{isCatalogLoading ? 'Menyinkronkan...' : 'Refresh Sekarang'}</span>
                               </button>
                             </div>
 
@@ -1190,29 +1193,31 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
                       {bookingTab === 'url' ? (
                         <div className="space-y-4">
                           <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">
-                              URL Google Sheets Booking (Publik / View-Only):
-                            </label>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="block text-xs font-bold text-slate-700">
+                                URL Google Sheets Booking (Publik / View-Only):
+                              </label>
+                              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                Tersimpan Permanen di Kode
+                              </span>
+                            </div>
                             <input
                               type="url"
-                              value={bookingUrl}
+                              readOnly
+                              value={bookingUrl || DEFAULT_BOOKING_CSV}
                               onChange={(e) => setBookingUrl(e.target.value)}
-                              placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-600 bg-slate-50 font-mono"
+                              placeholder="Tersimpan permanen di source code (constants.ts)"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 bg-slate-100 font-mono select-all focus:outline-none"
                             />
                             <p className="text-[11px] text-slate-500 mt-1">
-                              Pastikan spreadsheet memiliki kolom: <code>Code</code> (atau <code>Kode Produk</code>), <code>Start Date</code>, dan <code>End Date</code>.
+                              URL jadwal booking ditanamkan secara permanen di source code (<code>constants.ts</code>).
                             </p>
                           </div>
 
                           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                            <button
-                              type="button"
-                              onClick={handleResetBookingUrl}
-                              className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
-                            >
-                              Reset ke URL Resmi Winter Attire
-                            </button>
+                            <span className="text-[11px] text-slate-400">
+                              *Sinkronisasi data real-time dengan query timestamp bypass cache.
+                            </span>
 
                             <button
                               type="button"
@@ -1221,7 +1226,7 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
                               className="px-4 py-2 bg-[#0C3B43] hover:bg-[#10515B] text-white text-xs font-black rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
                             >
                               <RefreshCw className={`w-3.5 h-3.5 ${isBookingLoading ? 'animate-spin' : ''}`} />
-                              <span>{isBookingLoading ? 'Menghubungkan...' : 'Sinkronkan Jadwal Booking'}</span>
+                              <span>{isBookingLoading ? 'Menghubungkan...' : 'Refresh Sekarang'}</span>
                             </button>
                           </div>
                         </div>

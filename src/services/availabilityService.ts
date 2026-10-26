@@ -1,14 +1,14 @@
 import { BookingRecord, AvailabilityResult } from '../types';
+import { DEFAULT_BOOKING_CSV, DEFAULT_KATALOG_CSV } from '../constants';
 
 export const GOOGLE_SHEET_STORAGE_KEY = 'winter_attire_sheets_url';
 export const CUSTOM_BOOKINGS_STORAGE_KEY = 'winter_attire_custom_bookings';
 
 /**
- * KONSTANTA URL DEFAULT RESMI BOOKING WINTER ATTIRE
+ * KONSTANTA URL DEFAULT RESMI BOOKING WINTER ATTIRE (diimpor dari constants.ts)
  */
-export const DEFAULT_BOOKING_CSV_URL =
-  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CSV_URL) ||
-  '';
+export { DEFAULT_BOOKING_CSV, DEFAULT_KATALOG_CSV };
+export const DEFAULT_BOOKING_CSV_URL = DEFAULT_BOOKING_CSV;
 
 export function getBookingSheetUrl(): string {
   if (typeof window !== 'undefined') {

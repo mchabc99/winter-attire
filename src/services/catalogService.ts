@@ -1,4 +1,5 @@
 import { COMPLETE_PRODUCT_CATALOG } from '../data/productCatalog';
+import { DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from '../constants';
 
 export const CATALOG_SHEET_STORAGE_KEY = 'winter_attire_catalog_sheet_url';
 export const CATALOG_CACHE_STORAGE_KEY = 'winter_attire_catalog_cache_data';
@@ -773,19 +774,13 @@ export function getFallbackDynamicCatalog(): DynamicCatalogProduct[] {
 }
 
 /**
- * KONSTANTA URL DEFAULT RESMI WINTER ATTIRE
- * Tetapkan konstanta di file konfigurasi/state utama
+ * KONSTANTA URL DEFAULT RESMI WINTER ATTIRE (diimpor dari constants.ts)
  */
-export const DEFAULT_KATALOG_CSV_URL =
-  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CATALOG_URL) ||
-  '';
-
-export const DEFAULT_BOOKING_CSV_URL =
-  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CSV_URL) ||
-  '';
-
-export const DEFAULT_CSV_URL = DEFAULT_KATALOG_CSV_URL;
-export const DEFAULT_CATALOG_SHEET_URL = DEFAULT_KATALOG_CSV_URL;
+export { DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV };
+export const DEFAULT_KATALOG_CSV_URL = DEFAULT_KATALOG_CSV;
+export const DEFAULT_BOOKING_CSV_URL = DEFAULT_BOOKING_CSV;
+export const DEFAULT_CSV_URL = DEFAULT_KATALOG_CSV;
+export const DEFAULT_CATALOG_SHEET_URL = DEFAULT_KATALOG_CSV;
 
 /**
  * Retrieves saved Google Sheets URL for Catalog from localStorage or defaults.
