@@ -773,72 +773,63 @@ export function getFallbackDynamicCatalog(): DynamicCatalogProduct[] {
 }
 
 /**
- * Hardcoded Master Google Sheets CSV URL for Winter Attire Official Catalog.
- * Ensures the app immediately loads real catalog data on first load even if localStorage is empty
- * (e.g. Incognito, private mode, new visitor).
+ * KONSTANTA URL DEFAULT RESMI WINTER ATTIRE
+ * Tetapkan konstanta di file konfigurasi/state utama
  */
-export const DEFAULT_CSV_URL =
+export const DEFAULT_KATALOG_CSV_URL =
   (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CATALOG_URL) ||
-  'https://docs.google.com/spreadsheets/d/e/2PACX-1vT5K7qOQ_WinterAttire_Catalog_Master/pub?output=csv';
+  '';
 
-export const DEFAULT_CATALOG_SHEET_URL = DEFAULT_CSV_URL;
+export const DEFAULT_BOOKING_CSV_URL =
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CSV_URL) ||
+  '';
+
+export const DEFAULT_CSV_URL = DEFAULT_KATALOG_CSV_URL;
+export const DEFAULT_CATALOG_SHEET_URL = DEFAULT_KATALOG_CSV_URL;
 
 /**
- * Retrieves saved Google Sheets URL for Catalog from URL params, localStorage, or environment.
- * Cross-checks with general spreadsheet configuration to prevent sync gaps.
- * Falls back to DEFAULT_CSV_URL if localStorage is empty.
+ * Retrieves saved Google Sheets URL for Catalog from localStorage or defaults.
+ * Prioritizes 'katalog_csv_url' per user requirements.
  */
 export function getCatalogSheetUrl(): string {
   if (typeof window !== 'undefined') {
-    // 0. Auto-capture from URL query params (e.g. ?sheet=... or ?catalog=...) for 1-click cross-domain sync
     try {
-      const searchParams = new URLSearchParams(window.location.search);
-      const queryParam = searchParams.get('sheet') || searchParams.get('catalog') || searchParams.get('catalog_sheet') || searchParams.get('catalog_url');
-      if (queryParam && queryParam.trim()) {
-        const cleanParam = queryParam.trim();
-        localStorage.setItem(CATALOG_SHEET_STORAGE_KEY, cleanParam);
-        if (!localStorage.getItem('winter_attire_sheets_url')) {
-          localStorage.setItem('winter_attire_sheets_url', cleanParam);
-        }
-        return cleanParam;
-      }
+      // 1. Requested key: 'katalog_csv_url'
+      const requested = localStorage.getItem('katalog_csv_url');
+      if (requested && requested.trim()) return requested.trim();
+
+      // Legacy keys
+      const stored = localStorage.getItem(CATALOG_SHEET_STORAGE_KEY);
+      if (stored && stored.trim()) return stored.trim();
+
+      const generalStored = localStorage.getItem('winter_attire_sheets_url');
+      if (generalStored && generalStored.trim()) return generalStored.trim();
     } catch {
       // ignore
     }
 
-    const catalogUrl = localStorage.getItem(CATALOG_SHEET_STORAGE_KEY);
-    if (catalogUrl && catalogUrl.trim()) return catalogUrl.trim();
-
-    const generalSheetUrl = localStorage.getItem('winter_attire_sheets_url');
-    if (generalSheetUrl && generalSheetUrl.trim()) return generalSheetUrl.trim();
-
-    const bookingSheetUrl = localStorage.getItem('winter_attire_calendar_sheet_url');
-    if (bookingSheetUrl && bookingSheetUrl.trim()) return bookingSheetUrl.trim();
-
     const envCatalogUrl = (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CATALOG_URL;
     if (envCatalogUrl && envCatalogUrl.trim()) return envCatalogUrl.trim();
-
-    const envCsvUrl = (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CSV_URL;
-    if (envCsvUrl && envCsvUrl.trim()) return envCsvUrl.trim();
   }
-  return DEFAULT_CSV_URL;
+  return DEFAULT_KATALOG_CSV_URL;
 }
 
 export const getSavedCatalogSheetUrl = getCatalogSheetUrl;
 
 /**
- * Saves Google Sheets URL for Catalog to localStorage.
+ * Saves Google Sheets URL for Catalog to localStorage ('katalog_csv_url').
  */
 export function saveCatalogSheetUrl(url: string): void {
   if (typeof window !== 'undefined') {
     const clean = url.trim();
     if (clean) {
+      localStorage.setItem('katalog_csv_url', clean);
       localStorage.setItem(CATALOG_SHEET_STORAGE_KEY, clean);
-      if (!localStorage.getItem('winter_attire_sheets_url')) {
-        localStorage.setItem('winter_attire_sheets_url', clean);
-      }
+      localStorage.setItem('winter_attire_sheets_url', clean);
     } else {
+      localStorage.removeItem('katalog_csv_url');
       localStorage.removeItem(CATALOG_SHEET_STORAGE_KEY);
+      localStorage.removeItem('winter_attire_sheets_url');
     }
   }
 }

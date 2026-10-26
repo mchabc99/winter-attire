@@ -29,6 +29,8 @@ import {
   calculateTieredRentalPrice,
   calculateRentalDays,
   getCatalogSheetUrl,
+  DEFAULT_KATALOG_CSV_URL,
+  DEFAULT_BOOKING_CSV_URL,
   DEFAULT_CSV_URL,
   CATALOG_CACHE_STORAGE_KEY
 } from './services/catalogService';
@@ -171,32 +173,53 @@ export default function App() {
   const [cacheBusterKey, setCacheBusterKey] = useState<number>(Date.now());
   const [catalogInitialSize, setCatalogInitialSize] = useState<string>('all');
 
-  const refreshCatalog = async () => {
+  const refreshCatalog = async (sheetUrl?: string) => {
     setIsLoadingCatalog(true);
     const freshTimestamp = Date.now();
     setCacheBusterKey(freshTimestamp);
     try {
-      const result = await fetchCatalogFromGoogleSheet();
+      const activeUrl =
+        sheetUrl !== undefined
+          ? sheetUrl
+          : (typeof window !== 'undefined' ? localStorage.getItem('katalog_csv_url') : null) ||
+            DEFAULT_KATALOG_CSV_URL;
+
+      const result = await fetchCatalogFromGoogleSheet(activeUrl);
       if (result.products && result.products.length > 0) {
         // Immediately overwrite catalog state with real-time parsed data from Google Sheets
         setCatalogProducts(result.products);
         setCatalogSource(result.source);
         setLastCatalogSync(new Date());
+      } else {
+        setCatalogProducts(getFallbackDynamicCatalog());
+        setCatalogSource('fallback');
       }
     } catch (err) {
       console.warn('Could not refresh dynamic catalog:', err);
+      setCatalogProducts(getFallbackDynamicCatalog());
     } finally {
       setIsLoadingCatalog(false);
     }
   };
 
   useEffect(() => {
-    loadBookings().then(({ bookings: fetchedBookings, source }) => {
+    // 2. LOGIKA INITIALIZATION (FIRST LOAD & PRIVATE BROWSER FIX):
+    // Active URLs: localStorage or DEFAULT_*_CSV_URL constants
+    const activeCatalogUrl =
+      (typeof window !== 'undefined' ? localStorage.getItem('katalog_csv_url') : null) ||
+      DEFAULT_KATALOG_CSV_URL;
+    const activeBookingUrl =
+      (typeof window !== 'undefined' ? localStorage.getItem('booking_csv_url') : null) ||
+      DEFAULT_BOOKING_CSV_URL;
+
+    // Auto-fetch bookings
+    loadBookings(activeBookingUrl).then(({ bookings: fetchedBookings, source }) => {
       setBookings(fetchedBookings);
       setSheetSource(source);
     });
-    // Auto-fetch dynamic catalog on load
-    refreshCatalog().then(() => {
+
+    // Auto-fetch dynamic catalog on first load
+    refreshCatalog(activeCatalogUrl).then(() => {
       if (typeof window !== 'undefined' && window.location.search) {
         const sp = new URLSearchParams(window.location.search);
         if (sp.has('sheet') || sp.has('catalog') || sp.has('catalog_sheet') || sp.has('bookings')) {

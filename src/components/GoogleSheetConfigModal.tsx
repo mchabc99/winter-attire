@@ -36,6 +36,9 @@ import {
   parseGoogleSheetCsv,
   fetchBookingsFromGoogleSheet,
   DEFAULT_BOOKINGS,
+  DEFAULT_BOOKING_CSV_URL,
+  getBookingSheetUrl,
+  saveBookingSheetUrl,
   GOOGLE_SHEET_STORAGE_KEY
 } from '../services/availabilityService';
 import {
@@ -44,6 +47,7 @@ import {
   parseCatalogCsv,
   getSavedCatalogSheetUrl,
   saveCatalogSheetUrl,
+  DEFAULT_KATALOG_CSV_URL,
   DEFAULT_CATALOG_SHEET_URL,
   extractGoogleDriveFileId,
   isGoogleDriveFolder,
@@ -107,7 +111,7 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
     if (isOpen) {
       setActiveSection(defaultSection);
       setCatalogUrl(getSavedCatalogSheetUrl());
-      setBookingUrl(typeof window !== 'undefined' ? localStorage.getItem(GOOGLE_SHEET_STORAGE_KEY) || '' : '');
+      setBookingUrl(getBookingSheetUrl());
     }
   }, [isOpen, defaultSection]);
 
@@ -127,7 +131,7 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
   // Bookings Tab State
   const [bookingTab, setBookingTab] = useState<'url' | 'paste'>('url');
   const [bookingUrl, setBookingUrl] = useState(() => {
-    return typeof window !== 'undefined' ? localStorage.getItem(GOOGLE_SHEET_STORAGE_KEY) || '' : '';
+    return getBookingSheetUrl();
   });
   const [bookingPastedText, setBookingPastedText] = useState('');
   const [isBookingLoading, setIsBookingLoading] = useState(false);
@@ -322,24 +326,32 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
   };
 
   const handleResetCatalogUrl = () => {
-    setCatalogUrl(DEFAULT_CATALOG_SHEET_URL);
-    saveCatalogSheetUrl(DEFAULT_CATALOG_SHEET_URL);
+    setCatalogUrl(DEFAULT_KATALOG_CSV_URL);
+    saveCatalogSheetUrl(DEFAULT_KATALOG_CSV_URL);
     setCatalogStatusMsg({
       type: 'info',
-      text: 'URL katalog direset ke spreadsheet resmi Winter Attire. Klik "Sinkronkan Sekarang" untuk memuat.'
+      text: 'URL katalog direset ke URL resmi Winter Attire. Klik "Simpan & Hubungkan Live" untuk menyinkronkan.'
     });
   };
 
   // ================= BOOKING MANAGEMENT ACTIONS =================
+  const handleResetBookingUrl = () => {
+    setBookingUrl(DEFAULT_BOOKING_CSV_URL);
+    saveBookingSheetUrl(DEFAULT_BOOKING_CSV_URL);
+    setBookingStatusMsg({
+      type: 'info',
+      text: 'URL booking direset ke URL resmi Winter Attire. Klik "Sinkronkan Jadwal Booking" untuk menyinkronkan.'
+    });
+  };
+
   const handleFetchBookingUrl = async (urlToFetch?: string) => {
     const target = (urlToFetch !== undefined ? urlToFetch : bookingUrl).trim();
     setIsBookingLoading(true);
     setBookingStatusMsg(null);
 
+    saveBookingSheetUrl(target);
+
     if (!target) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(GOOGLE_SHEET_STORAGE_KEY);
-      }
       onUpdateBookings([], 'none');
       setIsBookingLoading(false);
       setBookingStatusMsg({
@@ -1193,7 +1205,15 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
                             </p>
                           </div>
 
-                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={handleResetBookingUrl}
+                              className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                            >
+                              Reset ke URL Resmi Winter Attire
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => handleFetchBookingUrl()}

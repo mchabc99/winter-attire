@@ -3,6 +3,44 @@ import { BookingRecord, AvailabilityResult } from '../types';
 export const GOOGLE_SHEET_STORAGE_KEY = 'winter_attire_sheets_url';
 export const CUSTOM_BOOKINGS_STORAGE_KEY = 'winter_attire_custom_bookings';
 
+/**
+ * KONSTANTA URL DEFAULT RESMI BOOKING WINTER ATTIRE
+ */
+export const DEFAULT_BOOKING_CSV_URL =
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CSV_URL) ||
+  '';
+
+export function getBookingSheetUrl(): string {
+  if (typeof window !== 'undefined') {
+    try {
+      const requested = localStorage.getItem('booking_csv_url');
+      if (requested && requested.trim()) return requested.trim();
+
+      const legacy = localStorage.getItem(GOOGLE_SHEET_STORAGE_KEY);
+      if (legacy && legacy.trim()) return legacy.trim();
+    } catch {
+      // ignore
+    }
+
+    const envCsvUrl = (import.meta as any)?.env?.VITE_GOOGLE_SHEET_CSV_URL;
+    if (envCsvUrl && envCsvUrl.trim()) return envCsvUrl.trim();
+  }
+  return DEFAULT_BOOKING_CSV_URL;
+}
+
+export function saveBookingSheetUrl(url: string): void {
+  if (typeof window !== 'undefined') {
+    const clean = url.trim();
+    if (clean) {
+      localStorage.setItem('booking_csv_url', clean);
+      localStorage.setItem(GOOGLE_SHEET_STORAGE_KEY, clean);
+    } else {
+      localStorage.removeItem('booking_csv_url');
+      localStorage.removeItem(GOOGLE_SHEET_STORAGE_KEY);
+    }
+  }
+}
+
 // Clean bookings store (No confidential or mock data)
 export const DEFAULT_BOOKINGS: BookingRecord[] = [];
 
@@ -274,10 +312,7 @@ export async function fetchBookingsFromGoogleSheet(url?: string): Promise<{
   const rawTargetUrl =
     url !== undefined
       ? url
-      : (queryBookingUrl ||
-        (typeof window !== 'undefined' ? localStorage.getItem(GOOGLE_SHEET_STORAGE_KEY) : '') ||
-        ((import.meta as any).env?.VITE_GOOGLE_SHEET_CSV_URL as string) ||
-        '');
+      : (queryBookingUrl || getBookingSheetUrl());
 
   if (!rawTargetUrl || rawTargetUrl.trim() === '') {
     if (cachedCustom.length > 0) {
@@ -293,13 +328,20 @@ export async function fetchBookingsFromGoogleSheet(url?: string): Promise<{
   }
 
   const directCsvUrl = convertToDirectCsvUrl(rawTargetUrl.trim());
+  const sep = directCsvUrl.includes('?') ? '&' : '?';
+  const noCacheUrl = `${directCsvUrl}${sep}t=${Date.now()}`;
 
-  // Attempt 1: Direct fetch
+  // Attempt 1: Direct fetch with anti-cache guarantees
   try {
-    const response = await fetch(directCsvUrl, {
+    const response = await fetch(noCacheUrl, {
+      method: 'GET',
       headers: {
-        Accept: 'text/csv, text/plain, */*'
-      }
+        Accept: 'text/csv, text/plain, */*',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0'
+      },
+      cache: 'no-store'
     });
 
     if (response.ok) {
@@ -313,7 +355,7 @@ export async function fetchBookingsFromGoogleSheet(url?: string): Promise<{
       const parsed = parseGoogleSheetCsv(text);
       if (parsed.length > 0) {
         if (typeof window !== 'undefined') {
-          localStorage.setItem(GOOGLE_SHEET_STORAGE_KEY, rawTargetUrl.trim());
+          saveBookingSheetUrl(rawTargetUrl.trim());
           localStorage.setItem(CUSTOM_BOOKINGS_STORAGE_KEY, JSON.stringify(parsed));
         }
         return {
@@ -329,10 +371,10 @@ export async function fetchBookingsFromGoogleSheet(url?: string): Promise<{
     console.warn('Direct fetch failed, mencoba proxy CORS fallback...', err);
   }
 
-  // Attempt 2: CORS Proxy Fallback (AllOrigins)
+  // Attempt 2: CORS Proxy Fallback (AllOrigins) with anti-cache
   try {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(directCsvUrl)}`;
-    const proxyRes = await fetch(proxyUrl);
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(noCacheUrl)}`;
+    const proxyRes = await fetch(proxyUrl, { cache: 'no-store' });
     if (proxyRes.ok) {
       const text = await proxyRes.text();
       if (!text.includes('<!DOCTYPE html>') && !text.includes('<html')) {
