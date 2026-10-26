@@ -41,9 +41,10 @@ import {
   saveBookingSheetUrl,
   GOOGLE_SHEET_STORAGE_KEY
 } from '../services/availabilityService';
-import { DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from '../constants';
+import { API_URL, DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from '../constants';
 import {
   DynamicCatalogProduct,
+  fetchCatalogFromApi,
   fetchCatalogFromGoogleSheet,
   parseCatalogCsv,
   getSavedCatalogSheetUrl,

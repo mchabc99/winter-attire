@@ -123,8 +123,8 @@ export const RecommendationView: React.FC<RecommendationViewProps> = ({
           code: item.kode_produk,
           name: item.nama_produk,
           waSize: item.size_wa,
-          imageUrl: item.link_foto_produk || item.link_foto_spek,
-          secondaryUrl: item.link_foto_spek,
+          imageUrl: item.image || item.link_foto_produk || item.specImage || item.link_foto_spek,
+          secondaryUrl: item.specImage || item.link_foto_spek || item.image || item.link_foto_produk,
           kategori: item.kategori,
           dailyPrice: Math.round((item.harga_sewa_3_hari || 150000) / 3),
           availability

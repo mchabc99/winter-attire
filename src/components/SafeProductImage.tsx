@@ -68,8 +68,17 @@ export const SafeProductImage: React.FC<SafeProductImageProps> = ({
 
     const list: string[] = [];
 
-    // 1. Primary: Google Fife direct CDN with optimal =s800
-    if (resolution.primaryUrl) {
+    // 1. Direct src as provided (e.g. product.image from Apps Script)
+    if (cleanSrc && cleanSrc.startsWith('http')) {
+      if (effectiveCacheBuster) {
+        const sep = cleanSrc.includes('?') ? '&' : '?';
+        list.push(`${cleanSrc}${sep}_cb=${effectiveCacheBuster}`);
+      }
+      list.push(cleanSrc);
+    }
+
+    // 2. Google Fife direct CDN with optimal =s800
+    if (resolution.primaryUrl && resolution.primaryUrl !== cleanSrc) {
       if (effectiveCacheBuster && resolution.primaryUrl.startsWith('http')) {
         const sep = resolution.primaryUrl.includes('?') ? '&' : '?';
         list.push(`${resolution.primaryUrl}${sep}_cb=${effectiveCacheBuster}`);
@@ -77,7 +86,7 @@ export const SafeProductImage: React.FC<SafeProductImageProps> = ({
       list.push(resolution.primaryUrl);
     }
 
-    // 2. Fallback 1: Google Drive official thumbnail endpoint (sz=w800)
+    // 3. Fallback 1: Google Drive official thumbnail endpoint (sz=w800)
     if (resolution.thumbnailUrl && resolution.thumbnailUrl !== resolution.primaryUrl) {
       list.push(resolution.thumbnailUrl);
     }

@@ -458,8 +458,8 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
           <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {filteredProducts.map(({ item, availability, pricing }, index) => {
               const isBooked = !availability.isAvailable;
-              const directProductPhoto = getDirectDriveImg(item.link_foto_produk);
-              const directSpecPhoto = getDirectDriveImg(item.link_foto_spek);
+              const directProductPhoto = item.image || item.link_foto_produk || getDirectDriveImg(item.link_foto_produk);
+              const directSpecPhoto = item.specImage || item.link_foto_spek || getDirectDriveImg(item.link_foto_spek);
 
               return (
                 <div
@@ -476,8 +476,8 @@ export const ProductCatalogSection: React.FC<ProductCatalogSectionProps> = ({
                     title="Klik untuk melihat Detail Spek lengkap"
                   >
                     <SafeProductImage
-                      src={directProductPhoto || directSpecPhoto}
-                      secondarySrc={directSpecPhoto}
+                      src={item.image || directProductPhoto || directSpecPhoto}
+                      secondarySrc={item.specImage || directSpecPhoto}
                       alt={item.nama_produk}
                       category={item.kategori}
                       code={item.kode_produk}

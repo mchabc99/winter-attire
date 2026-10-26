@@ -80,12 +80,12 @@ export const ProductSpecDetailModal: React.FC<ProductSpecDetailModalProps> = ({
   ];
 
   const currentPhotoUrl = activePhotoTab === 'spek'
-    ? (product.link_foto_spek || product.link_foto_produk)
-    : (product.link_foto_produk || product.link_foto_spek);
+    ? (product.specImage || product.link_foto_spek || product.image || product.link_foto_produk)
+    : (product.image || product.link_foto_produk || product.specImage || product.link_foto_spek);
 
   const secondaryPhotoUrl = activePhotoTab === 'spek'
-    ? (product.link_foto_produk || product.link_foto_spek)
-    : (product.link_foto_spek || product.link_foto_produk);
+    ? (product.image || product.link_foto_produk || product.specImage || product.link_foto_spek)
+    : (product.specImage || product.link_foto_spek || product.image || product.link_foto_produk);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">

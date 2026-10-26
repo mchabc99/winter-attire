@@ -1,5 +1,5 @@
 import { COMPLETE_PRODUCT_CATALOG } from '../data/productCatalog';
-import { DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from '../constants';
+import { API_URL, DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from '../constants';
 
 export const CATALOG_SHEET_STORAGE_KEY = 'winter_attire_catalog_sheet_url';
 export const CATALOG_CACHE_STORAGE_KEY = 'winter_attire_catalog_cache_data';
@@ -28,6 +28,9 @@ export interface DynamicCatalogProduct {
   biaya_deposit: number;
   link_foto_produk: string;
   link_foto_spek: string;
+  image?: string;
+  specImage?: string;
+  [key: string]: any;
 }
 
 export interface TieredPriceCalculation {
@@ -880,17 +883,260 @@ export function saveCatalogSheetUrl(url: string): void {
 }
 
 /**
- * Live-fetches catalog CSV from Google Sheets with no-cache guarantees and CORS proxy fallback.
+ * Maps raw JSON array or JSON object received from Google Apps Script Web App
+ * to typed DynamicCatalogProduct items.
+ */
+export function mapJsonToDynamicProducts(data: any): DynamicCatalogProduct[] {
+  let list: any[] = [];
+  if (Array.isArray(data)) {
+    list = data;
+  } else if (data && typeof data === 'object') {
+    if (Array.isArray(data.products)) list = data.products;
+    else if (Array.isArray(data.data)) list = data.data;
+    else if (Array.isArray(data.items)) list = data.items;
+    else if (Array.isArray(data.rows)) list = data.rows;
+    else if (Array.isArray(data.result)) list = data.result;
+    else {
+      const vals = Object.values(data);
+      if (vals.length > 0 && typeof vals[0] === 'object') {
+        list = vals as any[];
+      }
+    }
+  }
+
+  if (!list || list.length === 0) return [];
+
+  return list.map((item: any, idx: number) => {
+    // If item is an array (e.g. 2D array of row values)
+    if (Array.isArray(item)) {
+      const row = item.map((v) => (v !== null && v !== undefined ? String(v).trim() : ''));
+      const kode = row[0] || `ITEM-${idx + 1}`;
+      const nama = row[1] || `Winter Attire Gear ${kode}`;
+      const rawFoto = (row.length > 20 && row[20]) ? row[20] : '';
+      const rawSpek = (row.length > 21 && row[21]) ? row[21] : '';
+      const id1 = extractGoogleDriveFileId(rawFoto);
+      const id2 = extractGoogleDriveFileId(rawSpek);
+      const link1 = id1 ? `https://lh3.googleusercontent.com/d/${id1}=s800` : rawFoto;
+      const link2 = id2 ? `https://lh3.googleusercontent.com/d/${id2}=s800` : rawSpek;
+      const image = link1 || link2 || '';
+      const specImage = link2 || link1 || '';
+
+      const p3 = parseNumber(row[11], 280000);
+      return {
+        id: `${kode}_${idx}`,
+        kode_produk: kode,
+        nama_produk: nama,
+        kategori: row[2] || 'Regular',
+        warna: row[3] || 'Black',
+        size_wa: row[4] || 'All Size',
+        rekomendasi_suhu: row[5] || '5°C s/d -15°C',
+        berat_gram: parseNumber(row[6], 800),
+        panjang_cm: parseNumber(row[7], 75),
+        lingkar_dada_max_cm: parseNumber(row[8], 110),
+        lingkar_pinggang_max_cm: parseNumber(row[9], 105),
+        fitur_spesial: row[10] || 'Windproof, Water-repellent',
+        harga_sewa_3_hari: p3,
+        harga_sewa_6_hari: parseNumber(row[12], Math.round(p3 * 1.5)),
+        harga_sewa_9_hari: parseNumber(row[13], Math.round(p3 * 2.0)),
+        harga_sewa_12_hari: parseNumber(row[14], Math.round(p3 * 2.5)),
+        harga_sewa_15_hari: parseNumber(row[15], Math.round(p3 * 3.0)),
+        harga_sewa_18_hari: parseNumber(row[16], Math.round(p3 * 3.5)),
+        harga_sewa_21_hari: parseNumber(row[17], Math.round(p3 * 4.0)),
+        harga_sewa_24_hari: parseNumber(row[18], Math.round(p3 * 4.5)),
+        biaya_deposit: parseNumber(row[19], 500000),
+        link_foto_produk: image,
+        link_foto_spek: specImage,
+        image,
+        specImage
+      };
+    }
+
+    // Pemetaan properti objek produk (Data Normalization sesuai user requirement)
+    const rawImage =
+      (item && (item.link_foto_produk || item.image || item.foto || item['link_foto_produk'] || item.imageUrl || item.url_foto)) || '';
+    const rawSpecImage =
+      (item && (item.link_foto_spek || item.specImage || item['link_foto_spek'] || item.specPhotoUrl)) || '';
+
+    const id1 = extractGoogleDriveFileId(rawImage);
+    const convertedImage = id1 && !String(rawImage).includes('lh3.googleusercontent.com')
+      ? `https://lh3.googleusercontent.com/d/${id1}=s800`
+      : rawImage;
+
+    const id2 = extractGoogleDriveFileId(rawSpecImage);
+    const convertedSpec = id2 && !String(rawSpecImage).includes('lh3.googleusercontent.com')
+      ? `https://lh3.googleusercontent.com/d/${id2}=s800`
+      : rawSpecImage;
+
+    const finalImage = convertedImage || convertedSpec || '';
+    const finalSpec = convertedSpec || convertedImage || '';
+
+    const getVal = (keys: string[], defaultVal = ''): string => {
+      for (const k of keys) {
+        if (item[k] !== undefined && item[k] !== null && String(item[k]).trim() !== '') {
+          return String(item[k]).trim();
+        }
+        const lowerK = k.toLowerCase().replace(/[\s\-_]/g, '');
+        for (const actualKey of Object.keys(item)) {
+          if (actualKey.toLowerCase().replace(/[\s\-_]/g, '') === lowerK && item[actualKey] !== undefined && item[actualKey] !== null) {
+            const v = String(item[actualKey]).trim();
+            if (v !== '') return v;
+          }
+        }
+      }
+      return defaultVal;
+    };
+
+    const getNum = (keys: string[], defaultNum = 0): number => {
+      const v = getVal(keys, '');
+      if (!v) return defaultNum;
+      const parsed = parseFloat(v.replace(/[^0-9.-]/g, ''));
+      return isNaN(parsed) ? defaultNum : parsed;
+    };
+
+    const kode_produk = getVal(['kode_produk', 'code', 'kode', 'product_code'], `ITEM-${idx + 1}`);
+    const nama_produk = getVal(['nama_produk', 'name', 'nama', 'product_name'], `Winter Gear ${kode_produk}`);
+    const kategori = getVal(['kategori', 'category'], 'Regular');
+    const warna = getVal(['warna', 'color'], 'Black');
+    const size_wa = getVal(['size_wa', 'size', 'waSize', 'ukuran'], 'All Size');
+    const rekomendasi_suhu = getVal(['rekomendasi_suhu', 'temperature', 'suhu', 'temp_suitability'], '< 5°C');
+    const berat_gram = getNum(['berat_gram', 'weight', 'berat'], 800);
+    const panjang_cm = getNum(['panjang_cm', 'length', 'panjang'], 75);
+    const lingkar_dada_max_cm = getNum(['lingkar_dada_max_cm', 'chest', 'ld_max'], 110);
+    const lingkar_pinggang_max_cm = getNum(['lingkar_pinggang_max_cm', 'waist', 'lp_max'], 105);
+    const fitur_spesial = getVal(['fitur_spesial', 'features', 'fitur', 'specialFeatures'], 'Windproof, Water-repellent, Thermal');
+
+    const harga_3 = getNum(['harga_sewa_3_hari', 'sewa_3_hari', 'harga_3_hari', 'price_3_days', 'dailyPrice'], 280000);
+    const harga_6 = getNum(['harga_sewa_6_hari', 'sewa_6_hari', 'harga_6_hari', 'price_6_days'], Math.round(harga_3 * 1.5));
+    const harga_9 = getNum(['harga_sewa_9_hari', 'sewa_9_hari', 'harga_9_hari', 'price_9_days'], Math.round(harga_3 * 2.0));
+    const harga_12 = getNum(['harga_sewa_12_hari', 'sewa_12_hari', 'harga_12_hari', 'price_12_days'], Math.round(harga_3 * 2.5));
+    const harga_15 = getNum(['harga_sewa_15_hari', 'sewa_15_hari', 'harga_15_hari', 'price_15_days'], Math.round(harga_3 * 3.0));
+    const harga_18 = getNum(['harga_sewa_18_hari', 'sewa_18_hari', 'harga_18_hari', 'price_18_days'], Math.round(harga_3 * 3.5));
+    const harga_21 = getNum(['harga_sewa_21_hari', 'sewa_21_hari', 'harga_21_hari', 'price_21_days'], Math.round(harga_3 * 4.0));
+    const harga_24 = getNum(['harga_sewa_24_hari', 'sewa_24_hari', 'harga_24_hari', 'price_24_days'], Math.round(harga_3 * 4.5));
+    const biaya_deposit = getNum(['biaya_deposit', 'deposit'], 500000);
+
+    return {
+      ...item,
+      id: item.id || `${kode_produk}_${idx}`,
+      kode_produk,
+      nama_produk,
+      kategori,
+      warna,
+      size_wa,
+      rekomendasi_suhu,
+      berat_gram,
+      panjang_cm,
+      lingkar_dada_max_cm,
+      lingkar_pinggang_max_cm,
+      fitur_spesial,
+      harga_sewa_3_hari: harga_3,
+      harga_sewa_6_hari: harga_6,
+      harga_sewa_9_hari: harga_9,
+      harga_sewa_12_hari: harga_12,
+      harga_sewa_15_hari: harga_15,
+      harga_sewa_18_hari: harga_18,
+      harga_sewa_21_hari: harga_21,
+      harga_sewa_24_hari: harga_24,
+      biaya_deposit,
+      link_foto_produk: finalImage,
+      link_foto_spek: finalSpec,
+      image: finalImage,
+      specImage: finalSpec
+    };
+  });
+}
+
+/**
+ * Fetches catalog directly from the official Google Apps Script Web App Endpoint.
+ */
+export async function fetchCatalogFromApi(
+  apiUrl = API_URL
+): Promise<{ products: DynamicCatalogProduct[]; source: 'google_sheets' | 'fallback'; error?: string }> {
+  try {
+    const targetUrl = apiUrl || API_URL;
+    const sep = targetUrl.includes('?') ? '&' : '?';
+    const noCacheUrl = `${targetUrl}${sep}t=${Date.now()}`;
+
+    let res: Response | null = null;
+    try {
+      res = await fetch(noCacheUrl, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json, text/plain, */*'
+        },
+        cache: 'no-store'
+      });
+    } catch (directErr) {
+      console.warn('Direct fetch to Apps Script Web App failed, trying proxy...', directErr);
+    }
+
+    if (!res || !res.ok) {
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(noCacheUrl)}`;
+      try {
+        const proxyRes = await fetch(proxyUrl, { cache: 'no-store' });
+        if (proxyRes.ok) {
+          res = proxyRes;
+        }
+      } catch (proxyErr) {
+        console.warn('Proxy fetch also failed:', proxyErr);
+      }
+    }
+
+    if (res && res.ok) {
+      const text = await res.text();
+      const clean = text.trim();
+
+      // Check if response is JSON
+      if (clean.startsWith('{') || clean.startsWith('[')) {
+        try {
+          const parsedJson = JSON.parse(clean);
+          const mapped = mapJsonToDynamicProducts(parsedJson);
+          if (mapped.length > 0) {
+            return {
+              products: mapped,
+              source: 'google_sheets'
+            };
+          }
+        } catch (jsonErr) {
+          console.warn('Failed to parse JSON response:', jsonErr);
+        }
+      }
+
+      // Check if response is CSV
+      if (!clean.includes('<!DOCTYPE html>') && !clean.includes('<html')) {
+        const csvProds = parseCatalogCsv(clean);
+        if (csvProds.length > 0) {
+          return {
+            products: csvProds,
+            source: 'google_sheets'
+          };
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('Error fetching catalog from API:', err);
+  }
+
+  return {
+    products: getFallbackDynamicCatalog(),
+    source: 'fallback'
+  };
+}
+
+/**
+ * Live-fetches catalog from Google Apps Script Web App Endpoint or CSV with no-cache guarantees.
  */
 export async function fetchCatalogFromGoogleSheet(
   sheetUrl?: string
 ): Promise<{ products: DynamicCatalogProduct[]; source: 'google_sheets' | 'fallback'; error?: string }> {
   const rawUrl = sheetUrl || getCatalogSheetUrl();
   if (!rawUrl || !rawUrl.trim()) {
-    return {
-      products: getFallbackDynamicCatalog(),
-      source: 'fallback'
-    };
+    return fetchCatalogFromApi(API_URL);
+  }
+
+  // If URL is the Apps Script Web App Endpoint, use fetchCatalogFromApi
+  if (rawUrl.includes('script.google.com') || rawUrl === API_URL) {
+    return fetchCatalogFromApi(rawUrl);
   }
 
   const csvExportUrl = convertToDirectCsvUrl(rawUrl);
@@ -941,15 +1187,6 @@ export async function fetchCatalogFromGoogleSheet(
       throw new Error('Spreadsheet kosong atau format kolom belum sesuai (pastikan terdapat kolom kode_produk, nama_produk, dan link_foto_produk).');
     }
 
-    // Cache locally for offline resilience
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(CATALOG_CACHE_STORAGE_KEY, JSON.stringify(parsed));
-      } catch {
-        // quota ignore
-      }
-    }
-
     return {
       products: parsed,
       source: 'google_sheets'
@@ -957,25 +1194,7 @@ export async function fetchCatalogFromGoogleSheet(
   } catch (err: any) {
     console.warn('Google Sheets catalog fetch error:', err);
 
-    // Try reading cached data
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = localStorage.getItem(CATALOG_CACHE_STORAGE_KEY);
-        if (cached) {
-          const cachedData = JSON.parse(cached);
-          if (Array.isArray(cachedData) && cachedData.length > 0) {
-            return {
-              products: cachedData,
-              source: 'google_sheets',
-              error: `Terkoneksi ke cache offline (${err?.message || 'Koneksi terbatas'})`
-            };
-          }
-        }
-      } catch {
-        // fallback
-      }
-    }
-
+    // Bypass localStorage sepenuhnya: return fallback catalog directly
     return {
       products: getFallbackDynamicCatalog(),
       source: 'fallback',

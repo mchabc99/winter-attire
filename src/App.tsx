@@ -23,6 +23,7 @@ import {
 import { COMPLETE_PRODUCT_CATALOG, CatalogProduct } from './data/productCatalog';
 import {
   DynamicCatalogProduct,
+  fetchCatalogFromApi,
   fetchCatalogFromGoogleSheet,
   getFallbackDynamicCatalog,
   convertGoogleDriveImageUrl,
@@ -32,7 +33,7 @@ import {
   DEFAULT_CSV_URL,
   CATALOG_CACHE_STORAGE_KEY
 } from './services/catalogService';
-import { DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from './constants';
+import { API_URL, DEFAULT_KATALOG_CSV, DEFAULT_BOOKING_CSV } from './constants';
 import { loadBookings, checkProductAvailability } from './services/availabilityService';
 import { Header } from './components/Header';
 import { RentalForm } from './components/RentalForm';
@@ -191,21 +192,37 @@ export default function App() {
       setSheetSource('none');
     });
 
-    // 2. Langsung muat data katalog dengan anti-cache
+    // 2. Langsung muat data katalog dari API_URL resmi Google Apps Script Web App (Bypass localStorage sepenuhnya)
     try {
-      const activeCatalog = catUrl || DEFAULT_KATALOG_CSV;
-      const result = await fetchCatalogFromGoogleSheet(activeCatalog);
+      const activeCatalog = catUrl || API_URL;
+      const result = await fetchCatalogFromApi(activeCatalog);
       if (result.products && result.products.length > 0) {
-        setCatalogProducts(result.products);
+        // Pemetaan properti produk (Data Normalization sesuai spesifikasi user)
+        const formattedProducts = result.products.map((item: any) => ({
+          ...item,
+          image: item.link_foto_produk || item.image || item.foto || item['link_foto_produk'] || '',
+          specImage: item.link_foto_spek || item.specImage || item['link_foto_spek'] || ''
+        }));
+        setCatalogProducts(formattedProducts);
         setCatalogSource(result.source);
         setLastCatalogSync(new Date());
       } else {
-        setCatalogProducts(getFallbackDynamicCatalog());
+        const fallback = getFallbackDynamicCatalog().map((item: any) => ({
+          ...item,
+          image: item.link_foto_produk || item.image || item.foto || '',
+          specImage: item.link_foto_spek || item.specImage || ''
+        }));
+        setCatalogProducts(fallback);
         setCatalogSource('fallback');
       }
     } catch (err) {
-      console.warn('Could not refresh dynamic catalog:', err);
-      setCatalogProducts(getFallbackDynamicCatalog());
+      console.warn('Could not refresh dynamic catalog from API:', err);
+      const fallback = getFallbackDynamicCatalog().map((item: any) => ({
+        ...item,
+        image: item.link_foto_produk || item.image || item.foto || '',
+        specImage: item.link_foto_spek || item.specImage || ''
+      }));
+      setCatalogProducts(fallback);
       setCatalogSource('fallback');
     } finally {
       setIsLoadingCatalog(false);
@@ -213,10 +230,19 @@ export default function App() {
   };
 
   const refreshCatalog = async () => {
-    await loadData(katalogUrl, bookingUrl);
+    await loadData(katalogUrl || API_URL, bookingUrl);
   };
 
   useEffect(() => {
+    // BYPASS LOCALSTORAGE SEPENUHNYA:
+    // Bersihkan cache produk dari localStorage jika ada sisa agar tidak menimpa data
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(CATALOG_CACHE_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
     // Pada useEffect saat pertama kali render (mount), LANGSUNG panggil fungsi loadData()
     // tanpa melakukan pengecekan apakah user adalah admin atau apakah localStorage kosong.
     loadData();
